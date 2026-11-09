@@ -1,0 +1,6 @@
+[submodule "third_party/kyokai"]
+	path = third_party/kyokai
+	url = ../Kyokai.git
+[submodule "packages/myapps_ui"]
+	path = packages/myapps_ui
+	url = ../MyApps-UI.git
