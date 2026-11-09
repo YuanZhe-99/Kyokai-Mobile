@@ -35,7 +35,9 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("codec")!!,
                             call.argument<Int>("width")!!,
                             call.argument<Int>("height")!!,
-                        ) { id -> runOnUiThread { events.invokeMethod("keyFrame", id) } }
+                            { id -> runOnUiThread { events.invokeMethod("keyFrame", id) } },
+                            { text -> runOnUiThread { events.invokeMethod("log", text) } },
+                        )
                         if (video == null) {
                             result.success(null)
                         } else {
@@ -45,6 +47,7 @@ class MainActivity : FlutterActivity() {
                             )
                         }
                     }
+                    "videoInfo" -> result.success(videos[call.argument<Number>("texture")!!.toLong()]?.info())
                     "videoClose" -> {
                         videos.remove(call.argument<Number>("texture")!!.toLong())?.close()
                         result.success(null)

@@ -295,6 +295,12 @@ class RemoteKeyboardState extends State<RemoteKeyboard> {
         if (_hostHeld.remove(mod)) {
           _send(mod.code, false);
           setState(() {});
+        } else if (mod == Mod.win && widget.hostOs != HostOs.macos && _latch[mod] == _Latch.off) {
+          // Win (Super) tapped alone is a key of its own on Windows and
+          // Linux: it opens Start or the overview. Held, it still makes a
+          // shortcut with the keys pressed meanwhile.
+          _send(mod.code, true);
+          _send(mod.code, false);
         } else {
           _tapMod(mod);
         }

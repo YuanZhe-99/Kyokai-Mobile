@@ -6,6 +6,8 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../data/log.dart';
+
 abstract final class Native {
   static const _m = MethodChannel('kyokai/native');
   static const _video = BasicMessageChannel<ByteData?>('kyokai/video', BinaryCodec());
@@ -18,6 +20,7 @@ abstract final class Native {
   static void listen() {
     _events.setMethodCallHandler((call) async {
       if (call.method == 'keyFrame') keyFrames.add((call.arguments as num).toInt());
+      if (call.method == 'log') Log.info('native', '${call.arguments}');
     });
   }
 
@@ -41,6 +44,10 @@ abstract final class Native {
     if (r == null) return null;
     return VideoTexture((r['texture'] as num).toInt(), '${r['decoder']}', r['hardware'] == true);
   }
+
+  /// The decoder in use and its counts: fed, decoded, errors, last error.
+  static Future<Map<String, Object?>?> videoInfo(int texture) =>
+      _m.invokeMapMethod<String, Object?>('videoInfo', {'texture': texture});
 
   static Future<void> closeVideo(int texture) => _m.invokeMethod('videoClose', {'texture': texture});
 

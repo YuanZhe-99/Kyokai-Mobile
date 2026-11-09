@@ -103,4 +103,10 @@ void main() {
       }
     }
   });
+
+  testWidgets('Win tapped alone opens Start on a Windows host', (t) async {
+    final sent = await _pump(t, width: 1024);
+    await t.tap(find.text('Win').first);
+    expect(sent.events, [(Scan.lwin, true), (Scan.lwin, false)]);
+  });
 }

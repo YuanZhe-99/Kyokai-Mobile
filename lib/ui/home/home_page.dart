@@ -72,7 +72,7 @@ class _HomePageState extends State<HomePage> {
     final l = context.l;
     final state = AppScope.of(context);
     return ListenableBuilder(
-      listenable: state.engine,
+      listenable: Listenable.merge([state.engine, state.prefs]),
       builder: (context, _) {
         final status = state.engine.status;
         final hosts = status.recent;
@@ -87,7 +87,10 @@ class _HomePageState extends State<HomePage> {
         }).toList();
         return LayoutBuilder(
           builder: (context, box) {
-            final split = canSplitLayout(box.maxWidth, box.maxHeight);
+            // The screen's own height: the on-screen keyboard shrinks the box,
+            // and a layout that changed with it would take the search field
+            // (and the keyboard) away as soon as they appear.
+            final split = canSplitLayout(box.maxWidth, box.maxHeight + MediaQuery.viewInsetsOf(context).bottom);
             final selected = split ? (_selected ?? shown.firstOrNull?.deviceId) : null;
             final list = _list(context, status, shown, split ? selected : null);
             if (!split) return Scaffold(body: list);
@@ -113,6 +116,8 @@ class _HomePageState extends State<HomePage> {
 
   Widget _list(BuildContext context, Status status, List<RecentHost> hosts, String? selected) {
     final l = context.l;
+    final prefs = AppScope.of(context).prefs;
+    final showOthers = prefs.othersInNetworks && status.network.networks.any((n) => n['joined'] == true);
     final cs = Theme.of(context).colorScheme;
     final net = status.network;
     return SafeArea(
@@ -175,13 +180,19 @@ class _HomePageState extends State<HomePage> {
                         selected: _filter == f,
                         onSelected: (_) => setState(() => _filter = f),
                       ),
+                    FilterChip(
+                      avatar: const Icon(Icons.hub_outlined, size: 18),
+                      label: Text(l.othersInNetworks),
+                      selected: prefs.othersInNetworks,
+                      onSelected: (v) => prefs.othersInNetworks = v,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
               ],
             ),
           ),
-          if (hosts.isEmpty)
+          if (hosts.isEmpty && !showOthers)
             SliverFillRemaining(
               hasScrollBody: false,
               child: Padding(
@@ -204,7 +215,7 @@ class _HomePageState extends State<HomePage> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, showOthers ? 16 : 120),
               sliver: SliverList.separated(
                 itemCount: hosts.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -227,9 +238,67 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
             ),
+          if (showOthers) ..._others(context, networkOthers(status)),
         ],
       ),
     );
+  }
+
+  /// The Kyokai devices in joined networks this phone never connected to,
+  /// each with Connect.
+  List<Widget> _others(BuildContext context, List<NetworkOther> others) {
+    final l = context.l;
+    final cs = Theme.of(context).colorScheme;
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+        sliver: SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l.othersTitle, style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                others.isEmpty ? l.othersNone : l.othersNote,
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+        sliver: SliverList.separated(
+          itemCount: others.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (context, i) {
+            final o = others[i];
+            final d = o.device;
+            final direct = d.path == 'direct';
+            return Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: cs.outlineVariant),
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.desktop_windows_outlined),
+                title: Text(d.name.isNotEmpty ? d.name : formatId(d.deviceId)),
+                subtitle: Text([
+                  if (d.name.isNotEmpty) formatId(d.deviceId),
+                  if (o.network.isNotEmpty) o.network,
+                  direct ? l.pathDirect : l.pathRelay,
+                  if (d.latencyMs != null) '${d.latencyMs} ms',
+                ].join(' · ')),
+                trailing: FilledButton.tonal(
+                  onPressed: () => openDesktop(context, d.deviceId),
+                  child: Text(l.connect),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ];
   }
 }
 

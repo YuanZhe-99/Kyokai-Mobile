@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/native.dart';
 import '../../data/app_state.dart';
 import '../../data/model.dart';
 import '../../data/prefs.dart';
@@ -175,7 +176,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
     final l = context.l;
     final cs = Theme.of(context).colorScheme;
     final t = s.texture;
-    if (t != null) return Texture(textureId: t.id, filterQuality: FilterQuality.medium);
+    if (t != null) return ColoredBox(color: Colors.black, child: Texture(textureId: t.id, filterQuality: FilterQuality.medium));
     if (s.rawImage != null) return RawImage(image: s.rawImage, fit: BoxFit.fill);
     return ColoredBox(
       color: Colors.black,
@@ -595,20 +596,48 @@ class _MouseButtonsState extends State<_MouseButtons> {
 
 /// Decoder, size, frame rate and delay over the picture (Settings ›
 /// Diagnostics › Show video details), for testing on a device.
-class _DebugOverlay extends StatelessWidget {
+class _DebugOverlay extends StatefulWidget {
   const _DebugOverlay({required this.session});
   final RemoteSession session;
 
   @override
+  State<_DebugOverlay> createState() => _DebugOverlayState();
+}
+
+class _DebugOverlayState extends State<_DebugOverlay> {
+  // The decoder's own counts, asked for once a second.
+  Map<String, Object?>? _info;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      final t = widget.session.texture;
+      final info = t == null ? null : await Native.videoInfo(t.id);
+      if (mounted) setState(() => _info = info);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final s = session;
+    final s = widget.session;
+    final i = _info;
     final st = s.stats;
     final t = s.texture;
     final lines = [
       '${s.videoStart['codec'] ?? '-'} ${s.pictureSize.width.toInt()}x${s.pictureSize.height.toInt()}'
           '${s.videoStart['placeholder'] != null ? ' (${s.videoStart['placeholder']})' : ''}',
       'host: ${s.videoStart['encoder'] ?? '-'}${s.videoStart['hardware'] == true ? ' hw' : ''}',
-      'decoder: ${t?.decoder ?? '-'}${t?.hardware == true ? ' hw' : ''}',
+      'decoder: ${i?['decoder'] ?? t?.decoder ?? '-'}${(i?['hardware'] ?? t?.hardware) == true ? ' hw' : ''}',
+      if (i != null) 'fed ${i['fed']}  decoded ${i['decoded']}  errors ${i['errors']}',
+      if (i?['error'] != null) '${i!['error']}',
       'fps ${st['frames'] ?? '-'}/${st['fps'] ?? '-'}  delay ${st['delay_ms'] ?? '-'} ms  enc ${st['encode_ms'] ?? '-'} ms',
       'bitrate ${st['bitrate'] is num ? '${((st['bitrate'] as num) / 1e6).toStringAsFixed(1)} Mb/s' : '-'}  ${st['video'] ?? ''}',
       'frames in ${s.framesShown}  session ${s.id}  ${s.state}',

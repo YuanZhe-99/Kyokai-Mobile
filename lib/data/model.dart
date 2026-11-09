@@ -160,3 +160,32 @@ String? parseId(String text) {
   final digits = text.replaceAll(RegExp(r'[\s\-]'), '');
   return RegExp(r'^\d{9}$').hasMatch(digits) ? digits : null;
 }
+
+/// A Kyokai device a joined network reaches that this one never connected
+/// to (the desktop's "Others in my networks"), by its best path.
+class NetworkOther {
+  NetworkOther(this.device, this.network);
+  final NetDevice device;
+  final String network;
+}
+
+/// The devices online in joined networks that are not in [Status.recent]
+/// and are not this device; for each, its direct path if it has one, else
+/// the quickest (internal/gui/home.go networkOthers).
+List<NetworkOther> networkOthers(Status status) {
+  final known = {for (final h in status.recent) h.deviceId, status.deviceId};
+  final best = <String, NetworkOther>{};
+  for (final n in status.network.networks) {
+    if (n['joined'] != true || n['state'] != 'online') continue;
+    final label = _str(n['label']).isNotEmpty ? _str(n['label']) : _str(n['name']);
+    for (final d in _list(n['devices']).map(NetDevice.new)) {
+      if (known.contains(d.deviceId)) continue;
+      final o = best[d.deviceId];
+      final better = o == null ||
+          (d.path == 'direct' && o.device.path != 'direct') ||
+          (d.path == o.device.path && (d.latencyMs ?? 1 << 30) < (o.device.latencyMs ?? 1 << 30));
+      if (better) best[d.deviceId] = NetworkOther(d, label);
+    }
+  }
+  return best.values.toList()..sort((a, b) => a.device.deviceId.compareTo(b.device.deviceId));
+}

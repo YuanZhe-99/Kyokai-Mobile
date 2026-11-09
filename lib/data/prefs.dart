@@ -29,6 +29,11 @@ class Prefs extends ChangeNotifier {
   String? get locale => _p.getString('locale');
   set locale(String? v) => _set('locale', v);
 
+  /// Home also lists the Kyokai devices the joined networks reach that
+  /// this phone never connected to.
+  bool get othersInNetworks => _p.getBool('othersInNetworks') ?? true;
+  set othersInNetworks(bool v) => _set('othersInNetworks', v);
+
   bool get splitKeyboard => _p.getBool('splitKeyboard') ?? false;
   set splitKeyboard(bool v) => _set('splitKeyboard', v);
 

@@ -1,15 +1,17 @@
 // Settings: this device, networks, sign-in keys, appearance, input, the
-// identity backup and diagnostics.
+// diagnostics.
 
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:myapps_ui/myapps_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/app_state.dart';
+import '../../data/key_import.dart';
 import '../../data/model.dart';
 import '../shell/app.dart';
 import 'diagnostics_page.dart';
@@ -163,22 +165,6 @@ class SettingsPage extends StatelessWidget {
                   ],
                 ),
                 MyAppsSettingsSection(
-                  title: l.sectionIdentity,
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.upload_outlined),
-                      title: Text(l.identityExport),
-                      subtitle: Text(l.identityExportHint),
-                      onTap: () => _export(context),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.download_outlined),
-                      title: Text(l.identityImport),
-                      onTap: () => _import(context),
-                    ),
-                  ],
-                ),
-                MyAppsSettingsSection(
                   title: l.sectionAbout,
                   children: [
                     ListTile(
@@ -204,37 +190,6 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _export(BuildContext context) async {
-    final l = context.l;
-    final engine = AppScope.of(context).engine;
-    final pass = await _ask(context, l.passphrase, '', hint: l.passphraseHint, secret: true);
-    if (pass == null || !context.mounted) return;
-    if (pass.length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.passphraseShort)));
-      return;
-    }
-    try {
-      final r = await engine.call<Map<String, Object?>>('identity.export', {'passphrase': pass});
-      await Share.share('${r['document']}', subject: 'Kyokai identity');
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    }
-  }
-
-  Future<void> _import(BuildContext context) async {
-    final l = context.l;
-    final engine = AppScope.of(context).engine;
-    final doc = await _ask(context, l.identityImport, '', hint: l.identityImportHint, lines: 5);
-    if (doc == null || doc.isEmpty || !context.mounted) return;
-    final pass = await _ask(context, l.passphrase, '', secret: true);
-    if (pass == null || !context.mounted) return;
-    try {
-      await engine.act<Object?>('identity.import', {'document': doc, 'passphrase': pass});
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.identityImported)));
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    }
-  }
 }
 
 /// This device's sign-in keys: hosts that hold the public half let this
@@ -260,6 +215,86 @@ class _KeysPageState extends State<KeysPage> {
     if (mounted) setState(() => _keys = r.map((e) => (e as Map).cast<String, Object?>()).toList());
   }
 
+  /// New key, a key file, or a key pasted.
+  Future<void> _add() async {
+    final l = context.l;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.auto_awesome_outlined),
+              title: Text(l.keyNew),
+              subtitle: Text(l.keyNewHint),
+              onTap: () => Navigator.pop(context, 'new'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_open_outlined),
+              title: Text(l.keyImportFile),
+              subtitle: Text(l.keyImportHint),
+              onTap: () => Navigator.pop(context, 'file'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_paste),
+              title: Text(l.keyImportPaste),
+              onTap: () => Navigator.pop(context, 'paste'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'new':
+        await _generate();
+      case 'file':
+        final r = await FilePicker.platform.pickFiles(withData: true);
+        final f = r?.files.singleOrNull;
+        final bytes = f?.bytes;
+        if (f == null || bytes == null || !mounted) return;
+        if (bytes.length > 64 * 1024) return _failed(KeyImportError.notAKey);
+        await _import(utf8.decode(bytes, allowMalformed: true), f.name.replaceAll(RegExp(r'\.(pem|key|txt)$'), ''));
+      case 'paste':
+        final text = await _ask(context, l.keyImportPaste, '', hint: l.keyImportHint, lines: 6);
+        if (text != null && text.isNotEmpty && mounted) await _import(text, '');
+    }
+  }
+
+  Future<void> _import(String text, String name) async {
+    final l = context.l;
+    final engine = AppScope.of(context).engine;
+    final String private;
+    try {
+      private = importPrivateKey(text);
+    } on KeyImportException catch (e) {
+      return _failed(e.error);
+    }
+    final named = await _ask(context, l.keyName, name);
+    if (named == null || !mounted) return;
+    try {
+      await engine.call<Object?>('keys.add', {'name': named, 'private': private});
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+    await _load();
+  }
+
+  void _failed(KeyImportError e) {
+    final l = context.l;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (e) {
+          KeyImportError.notAKey => l.keyNotAKey,
+          KeyImportError.locked => l.keyLocked,
+          KeyImportError.unsupported => l.keyUnsupported,
+        }),
+      ),
+    );
+  }
+
   Future<void> _generate() async {
     final l = context.l;
     final engine = AppScope.of(context).engine;
@@ -282,7 +317,7 @@ class _KeysPageState extends State<KeysPage> {
     final l = context.l;
     return Scaffold(
       appBar: AppBar(title: Text(l.signInKeys)),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _generate, icon: const Icon(Icons.add), label: Text(l.keyNew)),
+      floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: Text(l.keyAdd)),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [

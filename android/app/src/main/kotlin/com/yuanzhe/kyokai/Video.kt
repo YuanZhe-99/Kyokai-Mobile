@@ -23,14 +23,33 @@ import java.util.concurrent.TimeUnit
 class Video private constructor(
     private val producer: TextureRegistry.SurfaceProducer,
     private val mime: String,
-    private val codecName: String,
+    private val candidates: List<String>,
     private val width: Int,
     private val height: Int,
     private val wantKey: (Long) -> Unit,
+    private val log: (String) -> Unit,
 ) {
     val id: Long = producer.id()
-    val name: String = codecName
-    val hardware: Boolean = hardwareOf(codecName)
+
+    /** The decoder in use: the first of [candidates] that works. */
+    @Volatile private var current = 0
+    val name: String get() = candidates[current]
+    val hardware: Boolean get() = hardwareOf(name)
+
+    // For diagnostics: frames given to the decoder and pictures it put out.
+    @Volatile var fed = 0L
+        private set
+    @Volatile var decoded = 0L
+        private set
+    @Volatile var errors = 0
+        private set
+    @Volatile var lastError: String? = null
+        private set
+
+    fun info(): Map<String, Any?> = mapOf(
+        "decoder" to name, "hardware" to hardware, "fed" to fed, "decoded" to decoded,
+        "errors" to errors, "error" to lastError,
+    )
 
     private class Frame(val data: ByteArray, val key: Boolean, val pts: Long)
 
@@ -86,6 +105,25 @@ class Video private constructor(
         var codec: MediaCodec? = null
         var configured = false
         val info = MediaCodec.BufferInfo()
+        // How this decoder has done since it started, to give up on one that
+        // fails or decodes nothing and try the next (often the software one).
+        var failures = 0
+        var keys = 0
+        var firstKeyAt = 0L
+        var decodedHere = 0L
+        var fedHere = 0L
+        fun nextDecoder(why: String) {
+            if (current + 1 >= candidates.size) return
+            log("video $id: $name $why; trying ${candidates[current + 1]}")
+            current++
+            failures = 0
+            keys = 0
+            firstKeyAt = 0L
+            decodedHere = 0L
+            fedHere = 0L
+            restart = true
+            wantKey(id)
+        }
         while (running) {
             try {
                 if (restart || (codec == null && surfaceReady)) {
@@ -95,7 +133,7 @@ class Video private constructor(
                     configured = false
                     needKey = true
                     if (surfaceReady) {
-                        codec = MediaCodec.createByCodecName(codecName).also {
+                        codec = MediaCodec.createByCodecName(name).also {
                             val format = MediaFormat.createVideoFormat(mime, width, height)
                             // Room for a key frame with its parameter sets at a high bitrate.
                             format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(width * height * 3 / 2, 4 shl 20))
@@ -104,6 +142,7 @@ class Video private constructor(
                             it.configure(format, producer.surface, null, 0)
                             it.start()
                         }
+                        log("video $id: $name started for ${width}x$height")
                     }
                 }
                 val c = codec
@@ -113,14 +152,21 @@ class Video private constructor(
                 }
                 val frame = queue.poll(5, TimeUnit.MILLISECONDS)
                 if (frame != null && !(needKey && !frame.key)) {
+                    if (frame.key) {
+                        keys++
+                        if (firstKeyAt == 0L) firstKeyAt = System.currentTimeMillis()
+                    }
                     if (frame.key && !configured) {
                         val (config, rest) = splitParameterSets(frame.data, mime == MIME_HEVC)
                         if (config.isNotEmpty()) queueInput(c, config, frame.pts, MediaCodec.BUFFER_FLAG_CODEC_CONFIG)
                         queueInput(c, rest, frame.pts, 0)
                         configured = true
+                        log("video $id: first key frame ${frame.data.size} bytes, parameter sets ${config.size} bytes")
                     } else {
                         queueInput(c, frame.data, frame.pts, 0)
                     }
+                    fed++
+                    fedHere++
                     needKey = false
                 }
                 // Render everything decoded, newest last.
@@ -128,17 +174,31 @@ class Video private constructor(
                     val out = c.dequeueOutputBuffer(info, 0)
                     if (out >= 0) {
                         c.releaseOutputBuffer(out, true)
+                        if (decoded == 0L) log("video $id: first picture from $name")
+                        decoded++
+                        decodedHere++
+                    } else if (out == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        log("video $id: output ${c.outputFormat}")
                     } else {
                         break
                     }
                 }
+                // Key frames went in for a while and nothing came out.
+                if (decodedHere == 0L && firstKeyAt != 0L && fedHere >= 5 && System.currentTimeMillis() - firstKeyAt > 4000) {
+                    nextDecoder("decoded nothing from $fedHere frames")
+                }
             } catch (e: Exception) {
                 // A codec error: start again from the next key frame.
+                errors++
+                lastError = "${e.javaClass.simpleName}: ${e.message}"
+                log("video $id: $name failed: $lastError")
                 codec?.let { stopQuietly(it) }
                 codec = null
                 configured = false
                 needKey = true
                 queue.clear()
+                failures++
+                if (decodedHere == 0L && failures >= 2) nextDecoder("failed $failures times")
                 if (running && surfaceReady) wantKey(id)
                 try { Thread.sleep(200) } catch (_: InterruptedException) {}
             }
@@ -177,23 +237,29 @@ class Video private constructor(
          * SPS/PPS, NAL types 7 and 8; HEVC VPS/SPS/PPS, 32–34) and the rest.
          */
         fun splitParameterSets(data: ByteArray, hevc: Boolean): Pair<ByteArray, ByteArray> {
+            // Every NAL unit, from its start code to the next one.
+            val starts = ArrayList<Pair<Int, Int>>()
             var i = 0
-            var end = 0
             while (true) {
-                val start = startCode(data, i) ?: break
-                val nal = start.second
-                if (nal >= data.size) break
-                val type = if (hevc) (data[nal].toInt() shr 1) and 0x3F else data[nal].toInt() and 0x1F
-                val isParam = if (hevc) type in 32..34 else type == 7 || type == 8
-                if (!isParam) {
-                    end = start.first
-                    break
-                }
-                i = nal
-                end = data.size
+                val s = startCode(data, i) ?: break
+                starts.add(s)
+                i = s.second
             }
-            if (end == 0 || end == data.size) return Pair(ByteArray(0), data)
-            return Pair(data.copyOfRange(0, end), data.copyOfRange(end, data.size))
+            if (starts.isEmpty()) return Pair(ByteArray(0), data)
+            val config = java.io.ByteArrayOutputStream()
+            val rest = java.io.ByteArrayOutputStream()
+            for ((k, s) in starts.withIndex()) {
+                val end = if (k + 1 < starts.size) starts[k + 1].first else data.size
+                if (s.second >= end) continue
+                val type = if (hevc) (data[s.second].toInt() shr 1) and 0x3F else data[s.second].toInt() and 0x1F
+                val isParam = if (hevc) type in 32..34 else type == 7 || type == 8
+                // Access unit delimiters (H.264 9, HEVC 35) are left out: some
+                // decoders take one in a codec-config buffer as the picture.
+                val isAud = if (hevc) type == 35 else type == 9
+                if (isAud) continue
+                (if (isParam) config else rest).write(data, s.first, end - s.first)
+            }
+            return Pair(config.toByteArray(), rest.toByteArray())
         }
 
         /** The next start code at or after [from]: its offset and where its NAL begins. */
@@ -255,17 +321,23 @@ class Video private constructor(
             width: Int,
             height: Int,
             wantKey: (Long) -> Unit,
+            log: (String) -> Unit,
         ): Video? {
             val mime = mimeOf(codec) ?: return null
-            val info = decodersFor(mime, width, height).firstOrNull() ?: return null
-            // Check the decoder opens before handing out a texture.
-            try {
-                MediaCodec.createByCodecName(info.name).release()
-            } catch (_: Exception) {
-                return null
+            // Every decoder that takes the size, hardware first; those that
+            // cannot even be created are left out.
+            val names = decodersFor(mime, width, height).map { it.name }.filter {
+                try {
+                    MediaCodec.createByCodecName(it).release()
+                    true
+                } catch (_: Exception) {
+                    false
+                }
             }
+            if (names.isEmpty()) return null
+            log("video: $codec ${width}x$height decoders $names")
             val producer = renderer.createSurfaceProducer()
-            return Video(producer, mime, info.name, width, height, wantKey)
+            return Video(producer, mime, names, width, height, wantKey, log)
         }
     }
 }
