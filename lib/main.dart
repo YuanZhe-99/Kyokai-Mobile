@@ -12,6 +12,7 @@ import 'data/app_state.dart';
 import 'data/engine.dart';
 import 'data/log.dart';
 import 'data/prefs.dart';
+import 'ui/settings/about_page.dart';
 import 'ui/shell/app.dart';
 
 Future<void> main() async {
@@ -35,6 +36,7 @@ Future<void> main() async {
       ),
     ),
   );
+  registerNativeLicenses();
   final prefs = await Prefs.load();
   Native.listen();
   final engine = Engine();

@@ -1,5 +1,6 @@
 // The navigation shell: Devices, Sessions and Settings. A phone gets
-// MyApps-UI's floating pill bar; 600 dp and wider get the rail.
+// MyApps-UI's floating pill bar, wider windows the rail, as Settings
+// > Appearance says (bottom, side on wide, side; left or right).
 
 import 'package:flutter/material.dart';
 import 'package:myapps_ui/myapps_ui.dart';
@@ -30,7 +31,8 @@ class _ShellState extends State<Shell> {
         listenable: state.prefs,
         builder: (context, _) => MyAppsNavigationShell(
           style: state.prefs.style,
-          placement: NavPlacement.sideOnWide,
+          placement: state.prefs.navPlacement,
+          railOnRight: state.prefs.railOnRight,
           selectedIndex: _index,
           onSelected: (i) => setState(() => _index = i),
           destinations: [

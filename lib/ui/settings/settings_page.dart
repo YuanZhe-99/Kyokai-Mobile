@@ -7,27 +7,107 @@ import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:myapps_adaptive/myapps_adaptive.dart';
 import 'package:myapps_ui/myapps_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../build_info.dart';
 import '../../data/app_state.dart';
 import '../../data/key_import.dart';
 import '../../data/model.dart';
 import '../shell/app.dart';
+import 'about_page.dart';
 import 'cursor_size.dart';
 import 'diagnostics_page.dart';
 import 'networks_page.dart';
 
-class SettingsPage extends StatelessWidget {
+/// The settings rows that open a page of their own: pushed on a phone, in
+/// the right-hand pane on a wide window (an unfolded fold, a tablet).
+enum SettingsDetail { networks, keys, diagnostics, license }
+
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  SettingsDetail? _detail;
+  bool _twoPane = false;
+
+  Widget _page(SettingsDetail d) => switch (d) {
+    SettingsDetail.networks => const NetworksPage(),
+    SettingsDetail.keys => const KeysPage(),
+    SettingsDetail.diagnostics => const DiagnosticsPage(),
+    SettingsDetail.license => const AppLicensePage(),
+  };
+
+  /// Every row that leads to a page goes through here, so the two layouts
+  /// cannot drift apart.
+  void _open(SettingsDetail d) {
+    if (_twoPane) {
+      setState(() => _detail = d);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _page(d)));
+  }
+
+  /// A row that opens [d]: marked while its page shows in the pane.
+  Widget _row(SettingsDetail d, {required IconData icon, required String title, String? subtitle}) => ListTile(
+    leading: Icon(icon),
+    title: Text(title),
+    subtitle: subtitle == null ? null : Text(subtitle),
+    trailing: const Icon(Icons.chevron_right),
+    selected: _twoPane && _detail == d,
+    onTap: () => _open(d),
+  );
+
+  Widget _pane() {
+    final d = _detail;
+    if (d == null) {
+      final cs = Theme.of(context).colorScheme;
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.tune_outlined, size: 48, color: cs.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(context.l.settingsSelectItem, style: TextStyle(color: cs.onSurfaceVariant)),
+          ],
+        ),
+      );
+    }
+    // A route of its own: the page's app bar grows no back arrow, and
+    // its own pushes stay inside the pane.
+    return Navigator(
+      key: ValueKey(d),
+      onGenerateRoute: (_) => MaterialPageRoute<void>(builder: (_) => _page(d)),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final split = canSplitLayout(screen.width, screen.height);
+    _twoPane = split;
+    return Scaffold(
+      body: MyAppsPaneBody(
+        primary: _list(context),
+        secondary: _pane(),
+        allowSplit: split,
+        primaryWidthFor: (w) => (w * 0.44).clamp(300.0, 440.0).clamp(240.0, max(240.0, w - 280)),
+        topInset: 0,
+        onSplitChanged: (v) => _twoPane = v,
+      ),
+    );
+  }
+
+  Widget _list(BuildContext context) {
     final l = context.l;
     final state = AppScope.of(context);
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: SafeArea(
+    return SafeArea(
         bottom: false,
         child: ListenableBuilder(
           listenable: Listenable.merge([state.engine, state.prefs]),
@@ -75,25 +155,18 @@ class SettingsPage extends StatelessWidget {
                 MyAppsSettingsSection(
                   title: l.sectionNetworks,
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.hub_outlined),
-                      title: Text(l.networks),
-                      subtitle: Text('${net.networks.length} · ${net.state}${net.address.isEmpty ? '' : ' · ${net.address}'}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const NetworksPage())),
+                    _row(
+                      SettingsDetail.networks,
+                      icon: Icons.hub_outlined,
+                      title: l.networks,
+                      subtitle: '${net.networks.length} · ${net.state}${net.address.isEmpty ? '' : ' · ${net.address}'}',
                     ),
                   ],
                 ),
                 MyAppsSettingsSection(
                   title: l.sectionKeys,
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.key_outlined),
-                      title: Text(l.signInKeys),
-                      subtitle: Text(l.signInKeysHint),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const KeysPage())),
-                    ),
+                    _row(SettingsDetail.keys, icon: Icons.key_outlined, title: l.signInKeys, subtitle: l.signInKeysHint),
                   ],
                 ),
                 MyAppsSettingsSection(
@@ -120,6 +193,41 @@ class SettingsPage extends StatelessWidget {
                         ButtonSegment(value: AppUiStyle.material3, label: Text('Material 3')),
                       ],
                     ),
+                    // As in MyAnime: bottom everywhere, the side on wide
+                    // windows (the default), or the side everywhere; and
+                    // which side, for either side option.
+                    MyAppsSettingsSegmentRow<NavPlacement>(
+                      leading: const Icon(Icons.view_sidebar_outlined),
+                      title: l.settingsNavPlacement,
+                      description: l.settingsNavPlacementDesc,
+                      selected: {prefs.navPlacement},
+                      onSelectionChanged: (v) => prefs.navPlacement = v.first,
+                      segments: [
+                        ButtonSegment(value: NavPlacement.bottom, label: Text(l.settingsNavPlacementBottom)),
+                        ButtonSegment(value: NavPlacement.sideOnWide, label: Text(l.settingsNavPlacementSideOnWide)),
+                        ButtonSegment(value: NavPlacement.side, label: Text(l.settingsNavPlacementSide)),
+                      ],
+                    ),
+                    if (prefs.navPlacement != NavPlacement.bottom)
+                      MyAppsSettingsSegmentRow<bool>(
+                        leading: const Icon(Icons.swap_horiz),
+                        title: l.settingsRailSide,
+                        description: l.settingsRailSideDesc,
+                        selected: {prefs.railOnRight},
+                        onSelectionChanged: (v) => prefs.railOnRight = v.first,
+                        segments: [
+                          ButtonSegment(
+                            value: false,
+                            icon: const Icon(Icons.align_horizontal_left, size: 18),
+                            label: Text(l.settingsRailSideLeft),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            icon: const Icon(Icons.align_horizontal_right, size: 18),
+                            label: Text(l.settingsRailSideRight),
+                          ),
+                        ],
+                      ),
                     SwitchListTile(
                       title: Text(l.dynamicColor),
                       subtitle: Text(l.dynamicColorHint),
@@ -189,17 +297,28 @@ class SettingsPage extends StatelessWidget {
                   title: l.sectionAbout,
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.bug_report_outlined),
-                      title: Text(l.diagnostics),
-                      subtitle: Text(l.diagnosticsHint),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DiagnosticsPage())),
+                      leading: const Icon(Icons.info_outline),
+                      title: Text(l.aboutVersion),
+                      subtitle: Text('${l.aboutApp} · $buildCommit · $buildTime'),
+                      trailing: Text('$appVersion ($buildNumber)', style: TextStyle(color: cs.onSurfaceVariant)),
                     ),
                     ListTile(
-                      leading: const Icon(Icons.info_outline),
-                      title: const Text('Kyokai'),
-                      subtitle: Text(l.aboutText(status.version)),
-                      onTap: () => showLicensePage(context: context, applicationName: 'Kyokai'),
+                      leading: const Icon(Icons.memory_outlined),
+                      title: Text(l.aboutCore),
+                      subtitle: Text(l.aboutCoreHint),
+                      trailing: Text(status.version.isEmpty ? '–' : status.version, style: TextStyle(color: cs.onSurfaceVariant)),
+                    ),
+                    _row(SettingsDetail.diagnostics, icon: Icons.bug_report_outlined, title: l.diagnostics, subtitle: l.diagnosticsHint),
+                    _row(SettingsDetail.license, icon: Icons.gavel_outlined, title: l.aboutLicense),
+                    ListTile(
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text(l.aboutLicenses),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => showLicensePage(
+                        context: context,
+                        applicationName: l.aboutApp,
+                        applicationVersion: '$appVersion · Kyokai Core ${status.version}',
+                      ),
                     ),
                   ],
                 ),
@@ -207,7 +326,6 @@ class SettingsPage extends StatelessWidget {
             );
           },
         ),
-      ),
     );
   }
 

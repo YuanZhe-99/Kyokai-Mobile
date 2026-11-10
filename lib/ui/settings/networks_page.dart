@@ -38,7 +38,7 @@ class _NetworksPageState extends State<NetworksPage> {
   }
 
   Future<void> _edit([Json? profile]) async {
-    final r = await showDialog<Json>(context: context, builder: (_) => _ProfileDialog(profile: profile));
+    final r = await showDialog<Json>(context: context, builder: (_) => NetworkProfileDialog(profile: profile));
     if (r != null) await _call('network.profile.set', r);
   }
 
@@ -103,19 +103,47 @@ class _NetworksPageState extends State<NetworksPage> {
   }
 }
 
-class _ProfileDialog extends StatefulWidget {
-  const _ProfileDialog({this.profile});
+/// A network's label, servers, name and secret; pops the profile to save.
+class NetworkProfileDialog extends StatefulWidget {
+  const NetworkProfileDialog({super.key, this.profile});
   final Json? profile;
 
   @override
-  State<_ProfileDialog> createState() => _ProfileDialogState();
+  State<NetworkProfileDialog> createState() => NetworkProfileDialogState();
 }
 
-class _ProfileDialogState extends State<_ProfileDialog> {
+class NetworkProfileDialogState extends State<NetworkProfileDialog> {
   late final _label = TextEditingController(text: '${widget.profile?['label'] ?? ''}');
-  late final _servers = TextEditingController(
-    text: ((widget.profile?['servers'] as List?) ?? const ['tcp://public.easytier.cn:11010']).join('\n'),
-  );
+  /// One field a server: a phone's keyboard has no new line in a URL field,
+  /// so a server list cannot be typed as lines.
+  late final List<TextEditingController> _servers = [
+    for (final s in (widget.profile?['servers'] as List?) ?? const ['tcp://public.easytier.cn:11010'])
+      TextEditingController(text: '$s'),
+  ];
+  final List<FocusNode> _serverFocus = [];
+
+  FocusNode _focusFor(int i) {
+    while (_serverFocus.length <= i) {
+      _serverFocus.add(FocusNode());
+    }
+    return _serverFocus[i];
+  }
+
+  void _addServer() {
+    setState(() => _servers.add(TextEditingController()));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusFor(_servers.length - 1).requestFocus());
+  }
+
+  @override
+  void dispose() {
+    for (final c in _servers) {
+      c.dispose();
+    }
+    for (final f in _serverFocus) {
+      f.dispose();
+    }
+    super.dispose();
+  }
   late final _name = TextEditingController(text: '${widget.profile?['name'] ?? ''}');
   final _secret = TextEditingController();
   bool _hide = true;
@@ -132,12 +160,46 @@ class _ProfileDialogState extends State<_ProfileDialog> {
           children: [
             TextField(controller: _label, decoration: InputDecoration(labelText: l.networkLabel)),
             const SizedBox(height: 12),
-            TextField(
-              controller: _servers,
-              minLines: 1,
-              maxLines: 4,
-              keyboardType: TextInputType.url,
-              decoration: InputDecoration(labelText: l.networkServers, helperText: l.networkServersHint),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(l.networkServers, style: Theme.of(context).textTheme.labelLarge),
+            ),
+            for (var i = 0; i < _servers.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: TextField(
+                  key: ValueKey('server$i'),
+                  controller: _servers[i],
+                  focusNode: _focusFor(i),
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  // Enter on the last one adds the next server.
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => i == _servers.length - 1 ? _addServer() : _focusFor(i + 1).requestFocus(),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: l.networkServerHint,
+                    suffixIcon: _servers.length > 1
+                        ? IconButton(
+                            tooltip: l.remove,
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () => setState(() {
+                              _servers.removeAt(i).dispose();
+                              if (i < _serverFocus.length) _serverFocus.removeAt(i).dispose();
+                            }),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: const ValueKey('serverAdd'),
+                onPressed: _addServer,
+                icon: const Icon(Icons.add),
+                label: Text(l.networkServerAdd),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(controller: _name, decoration: InputDecoration(labelText: l.networkName)),
@@ -161,7 +223,11 @@ class _ProfileDialogState extends State<_ProfileDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),
         FilledButton(
           onPressed: () {
-            final servers = _servers.text.split(RegExp(r'[\s,]+')).where((s) => s.isNotEmpty).toList();
+            // A pasted list in one field still splits.
+            final servers = _servers
+                .expand((c) => c.text.split(RegExp(r'[\s,]+')))
+                .where((s) => s.isNotEmpty)
+                .toList();
             Navigator.pop(context, <String, Object?>{
               if (editing) 'id': widget.profile!['id'],
               'label': _label.text.trim(),

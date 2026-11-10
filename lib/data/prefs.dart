@@ -21,6 +21,16 @@ class Prefs extends ChangeNotifier {
   AppUiStyle get style => AppUiStyle.values.byName(_p.getString('style') ?? 'expressive');
   set style(AppUiStyle v) => _set('style', v.name);
 
+  /// Where the navigation sits: the bottom bar, the side on wide windows
+  /// (an unfolded fold, a tablet; the default), or the side everywhere.
+  NavPlacement get navPlacement =>
+      NavPlacement.values.asNameMap()[_p.getString('navPlacement')] ?? NavPlacement.sideOnWide;
+  set navPlacement(NavPlacement v) => _set('navPlacement', v.name);
+
+  /// The side rail on the window's right instead of its left.
+  bool get railOnRight => _p.getBool('railOnRight') ?? false;
+  set railOnRight(bool v) => _set('railOnRight', v);
+
   /// Wallpaper colours (Android 12+) instead of Kyokai's own.
   bool get dynamicColor => _p.getBool('dynamicColor') ?? false;
   set dynamicColor(bool v) => _set('dynamicColor', v);
