@@ -5,6 +5,7 @@ import 'package:kyokai_mobile/ui/keyboard/keys.dart';
 import 'package:kyokai_mobile/ui/viewer/surface.dart';
 
 void main() {
+  pinTopTests();
   group('device IDs', () {
     test('format in groups of three', () {
       expect(formatId('123456789'), '123 456 789');
@@ -81,5 +82,17 @@ void main() {
       v.zoom(2, const Offset(200, 200));
       expect(v.visible.width, closeTo(0.5, 1e-9));
     });
+  });
+}
+
+void pinTopTests() {
+  test('a short picture sits at the top when pinned, centred otherwise', () {
+    final v = RemoteViewport()..layout(const Size(400, 400), const Size(1600, 800));
+    expect(v.origin.dy, 100);
+    v.pinTop = true;
+    expect(v.origin.dy, 0);
+    v.zoom(3, const Offset(200, 200));
+    v.zoom(1 / 3, const Offset(200, 200));
+    expect(v.origin.dy, 0, reason: 'back at the smallest, still at the top');
   });
 }

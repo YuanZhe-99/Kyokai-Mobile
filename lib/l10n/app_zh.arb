@@ -215,5 +215,9 @@
   "othersNote": "尚未连接过的 Kyokai 设备",
   "othersTitle": "我的网络中的其他设备",
   "videoView": "用 Android SurfaceView 显示视频",
-  "videoViewHint": "打开：解码器直接画到屏幕上。关闭：经过 Flutter 纹理。下次连接时生效。"
+  "videoViewHint": "打开：解码器直接画到屏幕上。关闭：经过 Flutter 纹理。下次连接时生效。",
+  "laptopMode": "折叠屏笔记本模式",
+  "laptopModeHint": "像笔记本一样半折手机：铰链上方显示画面，下方是键盘和触摸板",
+  "pictureTop": "画面贴顶",
+  "pictureTopHint": "主机画面没有占满时，放在顶部而不是居中"
 }

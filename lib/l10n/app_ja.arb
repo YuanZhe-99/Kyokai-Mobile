@@ -215,5 +215,9 @@
   "othersNote": "まだ接続したことのない Kyokai デバイス",
   "othersTitle": "ネットワーク内のほかのデバイス",
   "videoView": "Android SurfaceView で映像を表示",
-  "videoViewHint": "オン：デコーダーが画面に直接描画します。オフ：Flutter のテクスチャを経由します。次の接続から有効です。"
+  "videoViewHint": "オン：デコーダーが画面に直接描画します。オフ：Flutter のテクスチャを経由します。次の接続から有効です。",
+  "laptopMode": "折りたたみのノート PC モード",
+  "laptopModeHint": "ノート PC のように半分折ると、ヒンジの上に画面、下にキーボードとタッチパッドを表示します",
+  "pictureTop": "画面を上に寄せる",
+  "pictureTopHint": "ホストの画面が全体を埋めないとき、中央ではなく上に表示します"
 }

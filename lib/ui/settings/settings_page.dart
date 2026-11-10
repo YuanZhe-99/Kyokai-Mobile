@@ -162,6 +162,18 @@ class SettingsPage extends StatelessWidget {
                       value: prefs.splitKeyboard,
                       onChanged: (v) => prefs.splitKeyboard = v,
                     ),
+                    SwitchListTile(
+                      title: Text(l.pictureTop),
+                      subtitle: Text(l.pictureTopHint),
+                      value: prefs.pictureTop,
+                      onChanged: (v) => prefs.pictureTop = v,
+                    ),
+                    SwitchListTile(
+                      title: Text(l.laptopMode),
+                      subtitle: Text(l.laptopModeHint),
+                      value: prefs.laptopMode,
+                      onChanged: (v) => prefs.laptopMode = v,
+                    ),
                   ],
                 ),
                 MyAppsSettingsSection(

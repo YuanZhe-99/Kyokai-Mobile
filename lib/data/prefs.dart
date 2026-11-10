@@ -49,6 +49,15 @@ class Prefs extends ChangeNotifier {
   bool get overlay => _p.getBool('overlay') ?? false;
   set overlay(bool v) => _set('overlay', v);
 
+  /// The remote picture at the top of the view when it does not fill it.
+  bool get pictureTop => _p.getBool('pictureTop') ?? false;
+  set pictureTop(bool v) => _set('pictureTop', v);
+
+  /// A foldable half-open with its hinge across (laptop posture): the
+  /// picture above the hinge, the keyboard and a touchpad below it.
+  bool get laptopMode => _p.getBool('laptopMode') ?? false;
+  set laptopMode(bool v) => _set('laptopMode', v);
+
   /// Pointer speed of the trackpad mode.
   double get pointerSpeed => _p.getDouble('pointerSpeed') ?? 1.6;
   set pointerSpeed(double v) => _set('pointerSpeed', v);

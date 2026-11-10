@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,11 +10,14 @@ import 'package:kyokai_mobile/data/engine.dart';
 import 'package:kyokai_mobile/data/prefs.dart';
 import 'package:kyokai_mobile/data/sessions.dart';
 import 'package:kyokai_mobile/l10n/gen/app_localizations.dart';
+import 'package:kyokai_mobile/ui/keyboard/keyboard.dart';
+import 'package:kyokai_mobile/ui/viewer/surface.dart';
 import 'package:kyokai_mobile/ui/viewer/viewer_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   packetTests();
+  laptopTests();
   // An unfolded fold, a phone upright and on its side.
   for (final size in const [Size(1000, 760), Size(412, 915), Size(915, 412)]) {
     testWidgets('a connected session shows its picture at $size', (t) async {
@@ -111,4 +115,43 @@ void packetTests() {
     await t.pumpWidget(const SizedBox());
     state.sessions.dispose();
   });
+}
+
+void laptopTests() {
+  for (final on in [true, false]) {
+    testWidgets('a half-open fold ${on ? 'splits at the hinge' : 'keeps its layout'} with laptop mode ${on ? 'on' : 'off'}',
+        (t) async {
+      SharedPreferences.setMockInitialValues({'laptopMode': on});
+      final state = AppState(prefs: await Prefs.load(), engine: Engine());
+      final s = RemoteSession.forTest(state.sessions, '123456789')
+        ..state = 'connected'
+        ..granted = const ['view-screen', 'control-input']
+        ..pictureSize = const Size(2560, 1600)
+        ..texture = VideoTexture(7, 'c2.test.hevc.decoder', true);
+      t.view.physicalSize = const Size(1000, 760);
+      t.view.devicePixelRatio = 1;
+      t.view.displayFeatures = [
+        const DisplayFeature(
+          bounds: Rect.fromLTWH(0, 370, 1000, 20),
+          type: DisplayFeatureType.hinge,
+          state: DisplayFeatureState.postureHalfOpened,
+        ),
+      ];
+      addTearDown(t.view.reset);
+      await t.pumpWidget(AppScope(
+        state: state,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ViewerPage(session: s),
+        ),
+      ));
+      await t.pump();
+      expect(t.takeException(), isNull);
+      expect(find.byType(RemoteKeyboard), on ? findsOneWidget : findsNothing);
+      if (on) expect(t.getSize(find.byType(RemoteSurface)).height, 370);
+      await t.pumpWidget(const SizedBox());
+      state.sessions.dispose();
+    });
+  }
 }

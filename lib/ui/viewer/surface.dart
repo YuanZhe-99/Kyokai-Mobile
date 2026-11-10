@@ -47,6 +47,15 @@ class RemoteViewport extends ChangeNotifier {
   /// The picture's top-left corner in the view, after zoom.
   Offset origin = Offset.zero;
 
+  /// A picture shorter than the view sits at its top, not in its middle.
+  bool get pinTop => _pinTop;
+  bool _pinTop = false;
+  set pinTop(bool v) {
+    if (v == _pinTop) return;
+    _pinTop = v;
+    _clamp();
+  }
+
   /// The trackpad cursor, in picture fractions.
   Offset cursor = const Offset(0.5, 0.5);
 
@@ -90,9 +99,9 @@ class RemoteViewport extends ChangeNotifier {
   /// it is smaller.
   void _clamp() {
     final s = shown;
-    double axis(double o, double size, double box) =>
-        size <= box ? (box - size) / 2 : o.clamp(box - size, 0.0);
-    origin = Offset(axis(origin.dx, s.width, view.width), axis(origin.dy, s.height, view.height));
+    double axis(double o, double size, double box, {bool top = false}) =>
+        size <= box ? (top ? 0 : (box - size) / 2) : o.clamp(box - size, 0.0);
+    origin = Offset(axis(origin.dx, s.width, view.width), axis(origin.dy, s.height, view.height, top: _pinTop));
   }
 
   /// A point in the view as picture fractions (clamped into the picture).

@@ -5,6 +5,7 @@
 // split) and the host's AI beside the picture.
 
 import 'dart:async';
+import 'dart:ui' show DisplayFeatureState, DisplayFeatureType;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
@@ -23,6 +24,7 @@ import '../keyboard/keys.dart';
 import '../shell/app.dart';
 import 'session_sheets.dart';
 import 'surface.dart';
+import 'touchpad.dart';
 
 class ViewerPage extends StatefulWidget {
   const ViewerPage({super.key, required this.session});
@@ -238,13 +240,20 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
         return card([
           Icon(s.state == 'failed' ? Icons.error_outline : Icons.link_off, size: 40, color: cs.error),
           const SizedBox(height: 12),
-          Text(s.state == 'closed' ? l.sessionEnded : (s.dialError ?? failureText(l, s.failure)), textAlign: TextAlign.center),
+          Text(
+            s.state == 'closed' ? l.sessionEnded : (s.dialError ?? failureText(l, s.failure)),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             children: [
               if (s.failure == 'password' || s.failure == 'denied' || s.failure == 'absent' || s.failure == 'timeout')
-                FilledButton.icon(onPressed: _askPassword, icon: const Icon(Icons.password), label: Text(l.typePassword)),
+                FilledButton.icon(
+                  onPressed: _askPassword,
+                  icon: const Icon(Icons.password),
+                  label: Text(l.typePassword),
+                ),
               OutlinedButton(onPressed: () => s.retry(''), child: Text(l.tryAgain)),
             ],
           ),
@@ -290,8 +299,14 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                     onTap: _viewport.reset,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: cs.surface.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(12)),
-                      child: Text('${_viewport.scale.toStringAsFixed(1)}×', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                      decoration: BoxDecoration(
+                        color: cs.surface.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_viewport.scale.toStringAsFixed(1)}×',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                      ),
                     ),
                   ),
                 )
@@ -306,9 +321,21 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
               child: Chip(label: Text(l.inputPaused), avatar: const Icon(Icons.pause_circle_outline, size: 18)),
             ),
           ),
-        if (prefs.overlay) Positioned(left: 8, bottom: showButtons ? 64 : 8, child: _DebugOverlay(session: s)),
+        if (prefs.overlay)
+          Positioned(
+            left: 8,
+            bottom: showButtons ? 64 : 8,
+            child: _DebugOverlay(session: s),
+          ),
         if (showButtons && s.connected && prefs.pointerMode == PointerMode.trackpad)
-          Positioned(left: 0, right: 0, bottom: 12, child: Center(child: _MouseButtons(sink: this, viewport: _viewport))),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 12,
+            child: Center(
+              child: _MouseButtons(sink: this, viewport: _viewport),
+            ),
+          ),
         ?overlay,
       ],
     );
@@ -339,7 +366,9 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
           IconButton(
             tooltip: prefs.pointerMode == PointerMode.trackpad ? l.pointerTrackpad : l.pointerTouch,
             onPressed: () => setState(
-              () => prefs.pointerMode = prefs.pointerMode == PointerMode.trackpad ? PointerMode.touch : PointerMode.trackpad,
+              () => prefs.pointerMode = prefs.pointerMode == PointerMode.trackpad
+                  ? PointerMode.touch
+                  : PointerMode.trackpad,
             ),
             icon: Icon(prefs.pointerMode == PointerMode.trackpad ? Icons.touch_app_outlined : Icons.back_hand_outlined),
           ),
@@ -417,6 +446,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 600 && size.height >= 480;
+    _viewport.pinTop = AppScope.of(context).prefs.pictureTop;
     final landscapePhone = !wide && size.width > size.height;
     return PopScope(
       canPop: true,
@@ -424,7 +454,10 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
         focusNode: _focus,
         autofocus: true,
         onKeyEvent: _onKey,
-        child: landscapePhone ? _landscape() : _standard(wide),
+        child: switch (_laptopHinge()) {
+          final hinge? => _laptop(hinge),
+          null => landscapePhone ? _landscape() : _standard(wide),
+        },
       ),
     );
   }
@@ -440,10 +473,17 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(s.title, style: Theme.of(context).textTheme.titleMedium),
-            Text(_statsLine(), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant), overflow: TextOverflow.ellipsis),
+            Text(
+              _statsLine(),
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
-        actions: [_headerActions(compact: !wide), const SizedBox(width: 4)],
+        actions: [
+          _headerActions(compact: !wide),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -457,7 +497,10 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                   if (showAiPanel)
                     SizedBox(
                       width: 360,
-                      child: Material(color: cs.surfaceContainerLow, child: AiPanel(deviceId: s.deviceId, onClose: () => setState(() => _ai = false))),
+                      child: Material(
+                        color: cs.surfaceContainerLow,
+                        child: AiPanel(deviceId: s.deviceId, onClose: () => setState(() => _ai = false)),
+                      ),
                     ),
                 ],
               ),
@@ -469,8 +512,68 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
     );
   }
 
-  Widget _landscape() {
+  /// The hinge across a half-open foldable (laptop posture), when laptop
+  /// mode is on.
+  Rect? _laptopHinge() {
+    if (!AppScope.of(context).prefs.laptopMode) return null;
+    for (final f in MediaQuery.displayFeaturesOf(context)) {
+      final across = f.bounds.width > f.bounds.height;
+      if ((f.type == DisplayFeatureType.hinge || f.type == DisplayFeatureType.fold) &&
+          f.state == DisplayFeatureState.postureHalfOpened &&
+          across) {
+        return f.bounds;
+      }
+    }
+    return null;
+  }
+
+  /// Laptop posture: the picture above the hinge with the floating toolbar;
+  /// below it the full keyboard and a touchpad filling what is left.
+  Widget _laptop(Rect hinge) {
     final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Column(
+        children: [
+          SizedBox(
+            height: hinge.top,
+            child: Stack(
+              children: [
+                Positioned.fill(child: _surface(showButtons: false)),
+                _floatingBar(),
+              ],
+            ),
+          ),
+          SizedBox(height: hinge.height),
+          Expanded(
+            child: Material(
+              color: cs.surfaceContainer,
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    RemoteKeyboard(
+                      key: _keyboardKey,
+                      send: _sendScan,
+                      hostOs: _os,
+                      target: KeyTarget.kyokai,
+                      split: false,
+                      onSplitChanged: (_) {},
+                      onSpecial: _special,
+                      onHide: () {},
+                    ),
+                    Expanded(child: _LaptopPad(pad: _pad)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _landscape() {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Column(
@@ -479,47 +582,149 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
             child: Stack(
               children: [
                 Positioned.fill(child: _surface(showButtons: false)),
-                Positioned(
-                  top: 8,
-                  left: 0,
-                  right: 0,
-                  child: SafeArea(
-                    bottom: false,
-                    child: Center(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 150),
-                        child: _toolbar
-                            ? Material(
-                                key: const ValueKey('bar'),
-                                color: cs.surfaceContainerHigh.withValues(alpha: 0.95),
-                                shape: const StadiumBorder(),
-                                elevation: 3,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(onPressed: () => Navigator.of(context).maybePop(), icon: const Icon(Icons.arrow_back)),
-                                      _headerActions(compact: true),
-                                      IconButton(onPressed: () => setState(() => _toolbar = false), icon: const Icon(Icons.expand_less)),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : IconButton.filledTonal(
-                                key: const ValueKey('pull'),
-                                onPressed: () => setState(() => _toolbar = true),
-                                icon: const Icon(Icons.expand_more),
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
+                _floatingBar(),
               ],
             ),
           ),
           if (_keyboard) _keyboardWidget(),
         ],
+      ),
+    );
+  }
+
+  /// The toolbar floating over a full picture, folded away to a handle.
+  Widget _floatingBar() {
+    final cs = Theme.of(context).colorScheme;
+    return Positioned(
+      top: 8,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 150),
+            child: _toolbar
+                ? Material(
+                    key: const ValueKey('bar'),
+                    color: cs.surfaceContainerHigh.withValues(alpha: 0.95),
+                    shape: const StadiumBorder(),
+                    elevation: 3,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back),
+                          ),
+                          _headerActions(compact: true),
+                          IconButton(
+                            onPressed: () => setState(() => _toolbar = false),
+                            icon: const Icon(Icons.expand_less),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : IconButton.filledTonal(
+                    key: const ValueKey('pull'),
+                    onPressed: () => setState(() => _toolbar = true),
+                    icon: const Icon(Icons.expand_more),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Laptop mode's touchpad under the keyboard, with Left and Right below it.
+class _LaptopPad extends StatefulWidget {
+  const _LaptopPad({required this.pad});
+  final KeyboardPad pad;
+
+  @override
+  State<_LaptopPad> createState() => _LaptopPadState();
+}
+
+class _LaptopPadState extends State<_LaptopPad> implements TouchpadSink {
+  late final _engine = Touchpad(this);
+
+  @override
+  void move(Offset delta) => widget.pad.move(delta);
+
+  @override
+  void button(int button, bool down) {
+    if (down) HapticFeedback.selectionClick();
+    widget.pad.button(button, down);
+  }
+
+  @override
+  void scroll(Offset notches) => widget.pad.scroll(notches);
+
+  @override
+  void pinch(double scale, Offset focal, Offset pan) {}
+
+  @override
+  void dispose() {
+    _engine.reset();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      // Too little room under the keys: no pad (the keyboard still works).
+      builder: (context, box) => box.maxHeight < 96 ? const SizedBox.shrink() : _pad(context),
+    );
+  }
+
+  Widget _pad(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l = context.l;
+    Widget key(String label, int b) => Expanded(
+      child: Listener(
+        onPointerDown: (_) => button(b, true),
+        onPointerUp: (_) => button(b, false),
+        onPointerCancel: (_) => button(b, false),
+        child: Container(
+          margin: const EdgeInsets.all(3),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(10)),
+          child: Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+        ),
+      ),
+    );
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Column(
+            children: [
+              Expanded(
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: (e) => _engine.down(e.pointer, e.localPosition, e.timeStamp),
+                  onPointerMove: (e) => _engine.move(e.pointer, e.localPosition, e.timeStamp),
+                  onPointerUp: (e) => _engine.up(e.pointer, e.timeStamp),
+                  onPointerCancel: (e) => _engine.cancel(e.pointer),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+              SizedBox(height: 36, child: Row(children: [key(l.mouseLeft, 0), key(l.mouseRight, 1)])),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -580,7 +785,10 @@ class _MouseButtonsState extends State<_MouseButtons> {
     );
     return Container(
       padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: cs.surfaceContainerHigh.withValues(alpha: 0.94), borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHigh.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(24),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -662,7 +870,10 @@ class _DebugOverlayState extends State<_DebugOverlay> {
       child: Container(
         padding: const EdgeInsets.all(6),
         color: Colors.black.withValues(alpha: 0.6),
-        child: Text(lines.join('\n'), style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'monospace')),
+        child: Text(
+          lines.join('\n'),
+          style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'monospace'),
+        ),
       ),
     );
   }
