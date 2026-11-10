@@ -14,6 +14,7 @@ import '../../data/app_state.dart';
 import '../../data/key_import.dart';
 import '../../data/model.dart';
 import '../shell/app.dart';
+import 'cursor_size.dart';
 import 'diagnostics_page.dart';
 import 'networks_page.dart';
 
@@ -156,6 +157,7 @@ class SettingsPage extends StatelessWidget {
                         onChanged: (v) => prefs.pointerSpeed = v,
                       ),
                     ),
+                    CursorSizeTile(prefs: prefs),
                     SwitchListTile(
                       title: Text(l.splitKeyboard),
                       subtitle: Text(l.splitKeyboardHint),

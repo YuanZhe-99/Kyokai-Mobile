@@ -330,6 +330,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
               sink: this,
               mode: prefs.pointerMode,
               speed: prefs.pointerSpeed,
+              cursorSize: prefs.cursorSize,
               child: _picture(),
             ),
           ),
@@ -587,7 +588,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
               child: Stack(
                 children: [
                   Positioned.fill(child: _surface(showButtons: false)),
-                  _floatingBar(),
+                  if (_toolbar) _floatingBar() else _handle(),
                 ],
               ),
             ),
@@ -631,7 +632,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
             child: Stack(
               children: [
                 Positioned.fill(child: _surface(showButtons: false)),
-                _floatingBar(),
+                if (_toolbar) _floatingBar() else _handle(),
               ],
             ),
           ),
@@ -677,11 +678,67 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                       ),
                     ),
                   )
-                : IconButton.filledTonal(
-                    key: const ValueKey('pull'),
-                    onPressed: () => setState(() => _toolbar = true),
-                    icon: const Icon(Icons.expand_more),
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// While a finger drags the handle: where it is, in the room's pixels.
+  Offset? _handleDrag;
+
+  /// The folded toolbar's handle: tap to open the toolbar, drag it out of
+  /// the way; let go and it snaps to the nearer side, and stays there.
+  Widget _handle() {
+    final prefs = AppScope.of(context).prefs;
+    const size = 48.0;
+    const pad = 8.0;
+    return Positioned.fill(
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.all(pad),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final room = Size(math.max(0, box.maxWidth - size), math.max(0, box.maxHeight - size));
+              final f = prefs.handle;
+              final at = _handleDrag ?? Offset(f.dx * room.width, f.dy * room.height);
+              return Stack(
+                children: [
+                  AnimatedPositioned(
+                    duration: _handleDrag == null ? const Duration(milliseconds: 180) : Duration.zero,
+                    curve: Curves.easeOut,
+                    left: at.dx,
+                    top: at.dy,
+                    child: GestureDetector(
+                      onPanStart: (_) => setState(() => _handleDrag = at),
+                      onPanUpdate: (d) => setState(() {
+                        final p = (_handleDrag ?? at) + d.delta;
+                        _handleDrag = Offset(p.dx.clamp(0, room.width), p.dy.clamp(0, room.height));
+                      }),
+                      onPanEnd: (_) {
+                        final p = _handleDrag ?? at;
+                        // Near the top's middle it goes back there; else to a side.
+                        final x = room.width <= 0 ? 0.5 : p.dx / room.width;
+                        final y = room.height <= 0 ? 0.0 : p.dy / room.height;
+                        final home = (x - 0.5).abs() < 0.2 && y < 0.15;
+                        prefs.handle = home ? const Offset(0.5, 0) : Offset(x < 0.5 ? 0 : 1, y);
+                        setState(() => _handleDrag = null);
+                      },
+                      child: Opacity(
+                        opacity: _handleDrag == null ? 1 : 0.8,
+                        child: IconButton.filledTonal(
+                          key: const ValueKey('pull'),
+                          onPressed: () => setState(() => _toolbar = true),
+                          icon: const Icon(Icons.expand_more),
+                        ),
+                      ),
+                    ),
                   ),
+                ],
+              );
+            },
           ),
         ),
       ),

@@ -122,6 +122,7 @@
   "pathLan": "ローカル ネットワーク",
   "pathRelay": "リレー",
   "pointerSpeed": "ポインタの速度",
+  "cursorSize": "カーソルの大きさ",
   "pointerTouch": "タッチ",
   "pointerTrackpad": "トラックパッド",
   "primary": "メイン",

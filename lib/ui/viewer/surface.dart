@@ -149,6 +149,7 @@ class RemoteSurface extends StatefulWidget {
     required this.mode,
     required this.child,
     this.speed = 1.6,
+    this.cursorSize = 16,
     this.cursor,
   });
 
@@ -156,6 +157,9 @@ class RemoteSurface extends StatefulWidget {
   final PointerSink sink;
   final PointerMode mode;
   final double speed;
+
+  /// The trackpad cursor ring's diameter.
+  final double cursorSize;
 
   /// The picture (the decoder's texture).
   final Widget child;
@@ -399,20 +403,9 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
                   ),
                   if (trackpad)
                     Positioned(
-                      left: c.dx - 11,
-                      top: c.dy - 11,
-                      child: IgnorePointer(
-                        child: widget.cursor ??
-                            Container(
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9), spreadRadius: 2)],
-                              ),
-                            ),
-                      ),
+                      left: c.dx - widget.cursorSize / 2,
+                      top: c.dy - widget.cursorSize / 2,
+                      child: IgnorePointer(child: widget.cursor ?? CursorRing(size: widget.cursorSize)),
                     ),
                 ],
               );
@@ -488,5 +481,28 @@ class _PadToCursor implements TouchpadSink {
   void pinch(double scale, Offset focal, Offset pan) {
     s.vp.zoom(scale, focal);
     s.vp.pan(pan);
+  }
+}
+
+/// The trackpad cursor: a ring with a coloured glow, [size] across. The
+/// settings page shows the same ring to preview its size.
+class CursorRing extends StatelessWidget {
+  const CursorRing({super.key, required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = (size / 11).clamp(1.5, 3.0);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: border),
+        boxShadow: [
+          BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9), spreadRadius: border),
+        ],
+      ),
+    );
   }
 }

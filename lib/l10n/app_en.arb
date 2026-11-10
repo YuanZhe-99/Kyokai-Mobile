@@ -129,6 +129,7 @@
   "pathLan": "Local network",
   "pathRelay": "Relay",
   "pointerSpeed": "Pointer speed",
+  "cursorSize": "Cursor size",
   "pointerTouch": "Touch",
   "pointerTrackpad": "Trackpad",
   "primary": "Primary",

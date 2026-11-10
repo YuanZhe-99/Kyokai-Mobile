@@ -66,6 +66,21 @@ class Prefs extends ChangeNotifier {
   double get pointerSpeed => _p.getDouble('pointerSpeed') ?? 1.6;
   set pointerSpeed(double v) => _set('pointerSpeed', v);
 
+  /// The trackpad cursor's diameter, in logical pixels.
+  static const cursorMin = 10.0;
+  static const cursorMax = 34.0;
+  double get cursorSize => _p.getDouble('cursorSize') ?? 16;
+  set cursorSize(double v) => _set('cursorSize', v);
+
+  /// Where the folded toolbar's handle sits over the picture, as fractions
+  /// of the room it moves in (x 0 left to 1 right, y 0 top to 1 bottom).
+  Offset get handle => Offset(_p.getDouble('handleX') ?? 0.5, _p.getDouble('handleY') ?? 0);
+  set handle(Offset v) {
+    _p.setDouble('handleX', v.dx);
+    _p.setDouble('handleY', v.dy);
+    notifyListeners();
+  }
+
   bool get sound => _p.getBool('sound') ?? true;
   set sound(bool v) => _set('sound', v);
 

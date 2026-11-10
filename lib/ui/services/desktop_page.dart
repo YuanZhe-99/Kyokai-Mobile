@@ -216,6 +216,7 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
                         sink: this,
                         mode: prefs.pointerMode,
                         speed: prefs.pointerSpeed,
+                        cursorSize: prefs.cursorSize,
                         child: RawImage(image: picture, fit: BoxFit.fill, filterQuality: FilterQuality.medium),
                       ),
                     if (picture != null) Positioned(top: 10, right: 10, child: Minimap(viewport: _viewport)),
