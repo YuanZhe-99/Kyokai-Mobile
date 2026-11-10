@@ -30,4 +30,5 @@
 8. **登录密钥导入**：带口令的密钥、ECDSA 密钥。
 9. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、发布用 CI（GitHub Secrets 签名）、README 和用户文档。
 10. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上。
-11. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。
+11. **画面顶部的收起箭头可拖动**：会话页顶部中间的圆形箭头（收起的工具栏）现在固定在顶部中间，会挡住画面；要能拖到别处（贴边吸附、记住位置），点一下仍是展开工具栏。
+12. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。
