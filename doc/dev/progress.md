@@ -18,6 +18,7 @@
 - 触摸板（屏幕触控板模式和键盘触摸板共用 `lib/ui/viewer/touchpad.dart`）、折叠屏笔记本模式、画面贴顶
 - 收起的工具栏箭头可拖动（松手贴边、记住位置）；光标大小可调（设置里带预览和大中小参考）
 - 设置：导航栏位置（全部底部 / 宽屏侧边 / 全部侧边，侧边可选左右）；折叠屏展开时设置左右两栏；网络的服务器一行一个输入框（回车加下一个）；关于：版本 0.1.0、Kyokai Core 版本、许可证（AGPLv3）和开源许可证
+- CI（`.github/workflows/ci.yml`）：每次推送跑检查和测试，再从子模块构建 core、客户端库和 APK；打 `v*` 标签发布 Release（签名用 GitHub Secrets）。尚未在 GitHub 上跑过：需要先把 Kyokai 的 `android` 分支推到 GitHub
 - 偶发无画面：旧 SurfaceView 销毁时不再夺走新 view 的 surface；4 秒内解码器一帧没收到就改用纹理输出
 - SSH 终端、远程桌面、VNC（设备详情页的三个按钮），登录表单与保存的登录信息，主机密钥固定与信任
 
@@ -31,6 +32,6 @@
 6. **AI 任务历史**：只显示当前任务。
 7. **RDP 动态分辨率**（`SetDisplay`）和 H.264（Android 上没有 VideoToolbox，RDP 走 RemoteFX 等编码）。
 8. **登录密钥导入**：带口令的密钥、ECDSA 密钥。
-9. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、发布用 CI（GitHub Secrets 签名）、README 和用户文档。
+9. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、README 和用户文档。
 10. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上。
 11. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。

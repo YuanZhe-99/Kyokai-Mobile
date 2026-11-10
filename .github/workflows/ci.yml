@@ -1,0 +1,150 @@
+# Kyokai for Android's CI.
+#
+# - check: flutter analyze and the tests, on every push and pull request.
+#   Needs only the MyApps-UI submodule.
+# - apk: builds Kyokai's core (Rust) and service clients (Go) from the
+#   third_party/kyokai submodule with the NDK, then the arm64 APK, signed
+#   with the Kyokai key when the secrets are set (else the debug key).
+#   The submodule's commit must be on GitHub (YuanZhe-99/Kyokai), which the
+#   relative URL in .gitmodules resolves to here.
+# - release: on a v* tag whose version matches pubspec.yaml, a GitHub
+#   release with the APK and its SHA-256.
+#
+# Signing secrets (the same names as MyAnime's): KEYSTORE_BASE64 (the .jks,
+# base64), STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
+#
+# Actions are pinned to commits, as Kyokai's CI pins them; the Flutter and
+# Java setup actions by their major tags, as MyAnime's.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  FLUTTER_VERSION: '3.47.7'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # MyApps-UI is a path dependency; Kyokai is not needed to test.
+      - run: git submodule update --init --depth 1 packages/myapps_ui
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib test
+      - run: flutter test
+
+  apk:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          fetch-depth: 0 # the commit the APK is stamped with, and tags
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # The NDK the runner image ships, for both native libraries.
+      - name: NDK
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      # ---- Kyokai Core (Rust) ----
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: '1.99.1' # third_party/kyokai/rust-toolchain.toml
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: third_party/kyokai/core -> ../../../build/core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Pinned protoc (EasyTier's build)
+        run: echo "PROTOC=$(third_party/kyokai/scripts/protoc.sh)" >> "$GITHUB_ENV"
+      - name: Build the core
+        run: bash tool/build_core.sh
+
+      # ---- Service clients (Go) ----
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: third_party/kyokai/go.mod
+          cache-dependency-path: third_party/kyokai/go.sum
+      - name: Build the service clients
+        run: bash tool/build_clients.sh
+
+      # ---- The APK ----
+      - name: Signing
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/kyokai-ci.jks
+          printf 'storeFile=kyokai-ci.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
+      - run: flutter pub get
+      - name: Build the APK
+        run: bash tool/build_apk.sh
+      - name: Name it
+        run: |
+          version=$(sed -n 's/^version: *//p' pubspec.yaml)
+          mkdir -p out
+          name="Kyokai-Android-${version%%+*}-arm64.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "out/$name"
+          (cd out && sha256sum "$name" > "$name.sha256")
+          echo "Signed with: $([ "$HAS_KEYSTORE" = true ] && echo 'the Kyokai key' || echo 'the debug key')" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kyokai-android-apk
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag matches pubspec.yaml
+        run: |
+          version=$(sed -n 's/^version: *//p' pubspec.yaml)
+          [ "v${version%%+*}" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, pubspec ${version%%+*}" >&2; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: kyokai-android-apk
+          path: out
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: out/*
+          generate_release_notes: true
