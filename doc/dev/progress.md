@@ -14,7 +14,7 @@
 
 ## Kyokai 子模块
 
-Android 的改动（core 的 Android 构建、`android.*` 调用、`cache_dir`、剪贴板历史的 `paths`；客户端库 `cmd/kyokai-clients`；MediaCodec 的 H.264）已合进 Kyokai main（d9dae02），`android` 分支与 main 相同。
+Android 的改动（core 的 Android 构建、`android.*` 调用、`cache_dir`、剪贴板历史的 `paths`；客户端库 `cmd/kyokai-clients`；MediaCodec 的 H.264）已合进 Kyokai main（7168699），`android` 分支与 main 相同。
 
 ## 已在实机验证
 
