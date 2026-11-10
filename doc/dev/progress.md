@@ -1,13 +1,14 @@
 # 实现进度
 
-更新于 2026-11-09。
+更新于 2026-11-10（0.1.1）。
 
 ## 构建
 
-- `bash tool/build_core.sh`：Rust core（约 10 分钟）
-- `bash tool/build_clients.sh`：Go 客户端库 `libkyokai_clients.so`（SSH、RDP、VNC，Kyokai 的 `cmd/kyokai-clients`）
+- `bash tool/build_core.sh`：Rust core（约 4–10 分钟）
+- `bash tool/build_clients.sh`：Go 客户端库 `libkyokai_clients.so`（SSH、SFTP、RDP、VNC、密钥导入，Kyokai 的 `cmd/kyokai-clients`）
 - `bash tool/build_apk.sh`：签名的 arm64 APK（约 46 MB）
 - 协议参考：`doc/dev/api-control.md`、`api-media.md`、`api-services.md`
+- 使用说明：`doc/user-guide.md`、`doc/user-guide.zh.md`
 
 ## 已在实机验证
 
@@ -17,21 +18,27 @@
 
 - 触摸板（屏幕触控板模式和键盘触摸板共用 `lib/ui/viewer/touchpad.dart`）、折叠屏笔记本模式、画面贴顶
 - 收起的工具栏箭头可拖动（松手贴边、记住位置）；光标大小可调（设置里带预览和大中小参考）
-- 设置：导航栏位置（全部底部 / 宽屏侧边 / 全部侧边，侧边可选左右）；折叠屏展开时设置左右两栏；网络的服务器一行一个输入框（回车加下一个）；关于：版本 0.1.0、Kyokai Core 版本、许可证（AGPLv3）和开源许可证
-- CI（`.github/workflows/ci.yml`）：每次推送跑检查和测试，再从子模块构建 core、客户端库和 APK；打 `v*` 标签发布 Release（签名用 GitHub Secrets）。尚未在 GitHub 上跑过：需要先把 Kyokai 的 `android` 分支推到 GitHub
+- 设置：导航栏位置；折叠屏展开时设置左右两栏；网络的服务器一行一个输入框；关于：版本、Kyokai Core 版本、许可证
+- CI（`.github/workflows/ci.yml`）：检查、测试、从子模块构建 core、客户端库和 APK；`v*` 标签发布 Release。0.1.0 已经发布过
 - 偶发无画面：旧 SurfaceView 销毁时不再夺走新 view 的 surface；4 秒内解码器一帧没收到就改用纹理输出
-- SSH 终端、远程桌面、VNC（设备详情页的三个按钮），登录表单与保存的登录信息，主机密钥固定与信任
+- SSH 终端、远程桌面、VNC，登录表单与保存的登录信息，主机密钥固定与信任
+- 0.1.1：
+  - Activity 重建（进程和 core 还在）时不再报"the core is already started"：接管正在运行的 core，关掉旧界面留下的会话
+  - SFTP 文件（SSH 的"文件"）：浏览、上传、下载、重命名、删除、新建文件夹，传输进度和取消
+  - NanoKVM USB：设备详情的 NanoKVM 按钮（主机有 NanoKVM 时），`session.connect nanokvm`；MJPEG 画面用 BitmapFactory 画到 surface
+  - 剪贴板：图片双向（core 的 `android.clipboard` 新增 `png`；主机的图片经 `ClipProvider` 放进手机剪贴板）；剪贴板历史（会话页和桌面菜单）；文件只列出，不接收
+  - 唤醒：设备详情和设备列表的唤醒按钮（主机有 `wake` 特性时）、画面休眠时的唤醒按钮；没有打开的桌面时开一个只有 `control-input` 的短会话发 `wake`
+  - 多会话：桌面菜单里切换到另一个打开的画面；会话页列出桌面、AI、NanoKVM、SSH、远程桌面、VNC
+  - AI 任务历史：连接期间主机显示过的任务按 id 保存（本次运行内），AI 面板的历史按钮
+  - 远程桌面动态分辨率：画面区域变化时 `display`（RDP `SetDisplay`）
+  - 密钥导入：带口令的密钥、ECDSA P-256/P-384（经客户端库的 `key.import`，Go 的 x/crypto/ssh）
+  - M6：TalkBack 标签（图标按钮的提示、远程画面、缩放标签的 48 dp 目标）；首帧耗时（诊断页和视频详情）；README 和使用说明
 
 ## 还没有实现
 
-1. **SFTP 文件**：在 SSH 连接上浏览、上传、下载（桌面版 `internal/gui/sshfiles.go`），需要把非界面部分搬进客户端库，再做文件面板和 Android 的文件选择。
-2. **NanoKVM USB**：桌面版能经被控端连着的 NanoKVM 操作另一台电脑（`doc/en-us/remote-services.md` 的 NanoKVM USB 一节，`internal/gui/nanokvm.go`），手机端还没有；需要看它走的是哪条通道（隧道还是会话里的 Raw 画面），再决定放进客户端库还是 core。
-3. **剪贴板图片和文件**：Kyokai 会话只互通文字。
-4. **从首页唤醒睡眠中的设备**（Wake），以及离线设备的唤醒入口。
-5. **多会话标签**：平板上同时开两个会话并切换（现在只能从"会话"页回到某个会话）；SSH/RDP/VNC 会话也还没列进"会话"页。
-6. **AI 任务历史**：只显示当前任务。
-7. **RDP 动态分辨率**（`SetDisplay`）和 H.264（Android 上没有 VideoToolbox，RDP 走 RemoteFX 等编码）。
-8. **登录密钥导入**：带口令的密钥、ECDSA 密钥。
-9. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、README 和用户文档。
-10. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上。
-11. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。
+1. **RDP 的 H.264（AVC420/444）**：要在 Go 客户端库里用 NDK 的 AMediaCodec 实现 `rdp/codec/h264` 的 videoSession（现在只有 macOS 的 VideoToolbox），RDP 先用 RemoteFX 等编码。
+2. **剪贴板文件**：Kyokai 的文件传输（`files.rs` 的 Transfers）在 Android 上要有落盘目录和系统的文件分享，还没接。
+3. **AI 任务历史跨重启保存**：主机只发最新任务，历史只在本次运行内。
+4. **耗电测量**：需要实机跑一段时间看电池统计；首帧耗时已有数字。
+5. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上（0.1.1 又加了 `android.clipboard` 的 `png`、客户端库的 SFTP、`display`、`key.import`）。
+6. 本机缺 clang，桌面目标的 `cargo check` 和 cgo 部分的 `go test` 跑不了，靠 Kyokai 的 CI（客户端库的纯 Go 部分用 `CGO_ENABLED=0 go test` 可以跑）。

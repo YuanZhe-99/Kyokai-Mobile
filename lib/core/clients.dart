@@ -27,6 +27,9 @@ abstract final class ClientPacket {
 
   /// Text the host copied.
   static const clipboard = 4;
+
+  /// SFTP: JSON {transfer, done, total, state, error?} of a file copy.
+  static const transfer = 5;
 }
 
 typedef _ExchangeC = Int32 Function(Pointer<Uint8>, Size, Pointer<Pointer<Uint8>>, Pointer<Size>);
@@ -104,6 +107,11 @@ Map<String, Object?> clientsCall(String method, Map<String, Object?> params) {
     malloc.free(outLen);
   }
 }
+
+/// [clientsCall] on an isolate of its own, for a call that waits on the
+/// server (sftp.list and the other files calls).
+Future<Map<String, Object?>> clientsCallAsync(String method, Map<String, Object?> params) =>
+    Isolate.run(() => clientsCall(method, params));
 
 /// A client's packets, read on an isolate of their own until it ends.
 class ClientStream {

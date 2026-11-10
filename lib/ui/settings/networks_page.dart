@@ -211,6 +211,7 @@ class NetworkProfileDialogState extends State<NetworkProfileDialog> {
                 labelText: l.networkSecret,
                 helperText: editing && widget.profile?['has_secret'] == true ? l.networkSecretKeep : null,
                 suffixIcon: IconButton(
+                  tooltip: _hide ? context.l.a11yShowPassword : context.l.a11yHidePassword,
                   onPressed: () => setState(() => _hide = !_hide),
                   icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 ),

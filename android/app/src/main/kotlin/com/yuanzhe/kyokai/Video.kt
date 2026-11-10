@@ -127,6 +127,7 @@ class Video private constructor(
      */
     fun feed(buf: ByteBuffer, key: Boolean, pts: Long): Boolean {
         if (!surfaceReady) return true // Asked for again when the surface returns.
+        if (mime == MIME_MJPEG) needKey = false
         if (needKey && !key) return false
         val data = ByteArray(buf.remaining())
         buf.get(data)
@@ -142,7 +143,43 @@ class Video private constructor(
         return true
     }
 
+    /**
+     * A NanoKVM's picture: each frame a JPEG on its own, decoded with
+     * BitmapFactory and drawn on the surface, scaled to fill it.
+     */
+    private fun jpegLoop() {
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        while (running) {
+            // A view letting go of its surface waits for this: every pass.
+            pendingRelease?.countDown()
+            pendingRelease = null
+            restart = false
+            val frame = try { queue.poll(50, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { null } ?: continue
+            val surface = target() ?: continue
+            if (!surfaceReady || !surface.isValid) continue
+            try {
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(frame.data, 0, frame.data.size) ?: throw IllegalStateException("not a JPEG")
+                fed++
+                val canvas = if (Build.VERSION.SDK_INT >= 26) surface.lockHardwareCanvas() else surface.lockCanvas(null)
+                try {
+                    canvas.drawColor(android.graphics.Color.BLACK)
+                    canvas.drawBitmap(bmp, null, android.graphics.Rect(0, 0, canvas.width, canvas.height), paint)
+                } finally {
+                    surface.unlockCanvasAndPost(canvas)
+                }
+                bmp.recycle()
+                if (decoded == 0L) log("video $id: first JPEG ${frame.data.size} bytes")
+                decoded++
+            } catch (e: Exception) {
+                errors++
+                lastError = "${e.javaClass.simpleName}: ${e.message}"
+            }
+        }
+        pendingRelease?.countDown()
+    }
+
     private fun loop() {
+        if (mime == MIME_MJPEG) return jpegLoop()
         var codec: MediaCodec? = null
         var configured = false
         val info = MediaCodec.BufferInfo()
@@ -270,6 +307,7 @@ class Video private constructor(
     companion object {
         private const val MIME_H264 = MediaFormat.MIMETYPE_VIDEO_AVC
         private const val MIME_HEVC = MediaFormat.MIMETYPE_VIDEO_HEVC
+        private const val MIME_MJPEG = "image/jpeg"
 
         /** Ids of decoders that draw into a SurfaceView, apart from texture ids. */
         private var nextViewId = 1L shl 40
@@ -371,6 +409,11 @@ class Video private constructor(
             wantKey: (Long) -> Unit,
             log: (String) -> Unit,
         ): Video? {
+            if (codec == "mjpeg") {
+                if (view) return Video(nextViewId++, null, MIME_MJPEG, listOf("BitmapFactory"), width, height, wantKey, log)
+                val producer = renderer.createSurfaceProducer()
+                return Video(producer.id(), producer, MIME_MJPEG, listOf("BitmapFactory"), width, height, wantKey, log)
+            }
             val mime = mimeOf(codec) ?: return null
             // Every decoder that takes the size, hardware first; those that
             // cannot even be created are left out.

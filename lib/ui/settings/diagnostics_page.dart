@@ -32,7 +32,7 @@ class DiagnosticsPage extends StatelessWidget {
       if (s.network.error.isNotEmpty) 'network error: ${s.network.error}',
       'video output: ${state.prefs.videoView ? 'SurfaceView' : 'texture'}',
       'decoders: ${e.decoders.map((d) => '${d['codec']}=${d['name']}${d['hardware'] == true ? '(hw)' : ''} ${d['max_width']}x${d['max_height']}').join(', ')}',
-      'sessions: ${state.sessions.open.map((x) => '${x.id}:${x.kind.name}:${x.state}${x.failure == null ? '' : '(${x.failure})'}:${x.videoStart['codec'] ?? '-'}:${x.texture?.decoder ?? '-'}').join(' ')}',
+      'sessions: ${state.sessions.open.map((x) => '${x.id}:${x.kind.name}:${x.state}${x.failure == null ? '' : '(${x.failure})'}:${x.videoStart['codec'] ?? '-'}:${x.texture?.decoder ?? '-'}${x.firstFrameAfter == null ? '' : ':first ${x.firstFrameAfter!.inMilliseconds} ms'}').join(' ')}',
       'known hosts: ${s.recent.length}',
       'hinge: ${Native.hingeSensor == true ? '${Native.hingeAngle.value?.toStringAsFixed(0) ?? '-'}°' : 'no sensor'}',
     ];

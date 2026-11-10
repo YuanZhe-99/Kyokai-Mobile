@@ -124,6 +124,9 @@ class Watched {
   Json? get battery => sample?['battery'] is Map ? _map(sample!['battery']) : null;
   List<String> get services => (sample?['services'] as List?)?.map((e) => '$e').toList() ?? const [];
   bool get ai => sample?['ai'] == true;
+
+  /// Whether a NanoKVM USB is wired to the host; null before a sample.
+  bool? get nanokvm => sample == null ? null : sample!['nanokvm'] == true;
   int get uptime => _int(sample?['uptime_s']);
 }
 

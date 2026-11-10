@@ -76,7 +76,7 @@ class _TerminalPageState extends State<TerminalPage> {
               ),
               IconButton(
                 tooltip: l.disconnect,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: () => disconnectService(context, s),
                 icon: const Icon(Icons.close),
               ),
             ],

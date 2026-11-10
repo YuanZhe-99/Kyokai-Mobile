@@ -98,6 +98,17 @@ abstract final class Native {
   static Future<String?> clipboardText() async => (await Clipboard.getData(Clipboard.kTextPlain))?.text;
   static Future<void> setClipboardText(String text) => Clipboard.setData(ClipboardData(text: text));
 
+  /// The clipboard's image (Clip.kt): its mark, and its PNG unless the
+  /// mark is [unless] (the copy already read). Null without an image.
+  static Future<({String mark, Uint8List? png})?> clipboardImage({String? unless}) async {
+    final r = await _m.invokeMapMethod<String, Object?>('clipImage', {'unless': unless});
+    if (r == null) return null;
+    return (mark: '${r['mark']}', png: r['png'] as Uint8List?);
+  }
+
+  /// Puts a PNG on the clipboard. Returns the mark [clipboardImage] reads it with.
+  static Future<String?> setClipboardImage(Uint8List png) => _m.invokeMethod<String>('setClipImage', {'png': png});
+
   /// Build facts for the diagnostics page: Android version, model, ABI.
   static Future<Map<String, Object?>> device() async =>
       (await _m.invokeMapMethod<String, Object?>('device')) ?? const {};

@@ -31,6 +31,8 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "masterKey" -> result.success(MasterKey.get(this))
+                    "clipImage" -> result.success(Clip.image(this, call.argument<String>("unless")))
+                    "setClipImage" -> result.success(Clip.setImage(this, call.argument<ByteArray>("png")!!))
                     "decoders" -> result.success(Video.decodable())
                     "videoOpen" -> {
                         val video = Video.open(

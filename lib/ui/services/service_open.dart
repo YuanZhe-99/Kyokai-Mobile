@@ -1,5 +1,5 @@
-// Opening a device's SSH, Remote Desktop or VNC: the sign-in form, what a
-// failure means, and the page each one shows in.
+// Opening a device's SSH, its files, Remote Desktop or VNC: the sign-in
+// form, what a failure means, and the page each one shows in.
 
 import 'package:flutter/material.dart';
 
@@ -9,36 +9,67 @@ import '../../l10n/gen/app_localizations.dart';
 import '../home/device_widgets.dart';
 import '../shell/app.dart';
 import 'desktop_page.dart';
+import 'files_page.dart';
 import 'terminal_page.dart';
 
 /// Opens a service: the saved sign-in when there is one, else the form.
-Future<void> openService(BuildContext context, String deviceId, ServiceKind kind, String title, {String? address}) async {
+Future<void> openService(BuildContext context, String deviceId, ServiceKind kind, String title, {String? address}) =>
+    _openSession(
+      context,
+      ServiceSession(deviceId, kind, title, address: address),
+      (s) => kind == ServiceKind.ssh ? TerminalPage(session: s) : DesktopPage(session: s),
+    );
+
+/// Opens a device's files over SFTP, signed in as its SSH: the saved
+/// sign-in when there is one, else the form.
+Future<void> openFiles(BuildContext context, String deviceId, String title, {String? address}) => _openSession(
+  context,
+  FilesSession(deviceId, title, address: address),
+  (s) => FilesPage(session: s as FilesSession),
+);
+
+/// Signs [session] in and shows it on [page] until the page closes.
+Future<void> _openSession(BuildContext context, ServiceSession session, Widget Function(ServiceSession) page) async {
   final state = AppScope.of(context);
+  final kind = session.kind;
   Map<String, Object?> saved = const {};
   try {
-    saved = await state.engine.call<Map<String, Object?>>('credentials.get', {'device_id': deviceId, 'service': kind.name});
+    saved = await state.engine.call<Map<String, Object?>>('credentials.get', {
+      'device_id': session.deviceId,
+      'service': kind.name,
+    });
   } catch (_) {}
-  if (!context.mounted) return;
+  if (!context.mounted) return session.dispose();
   ServiceSignIn? signIn;
   if ('${saved['method'] ?? ''}'.isEmpty) {
     signIn = await askServiceSignIn(context, kind, saved: saved);
-    if (signIn == null || !context.mounted) return;
+    if (signIn == null || !context.mounted) return session.dispose();
   }
-  final session = ServiceSession(deviceId, kind, title, address: address);
   final locale = Localizations.localeOf(context).toString();
   final size = MediaQuery.sizeOf(context) * MediaQuery.devicePixelRatioOf(context);
   // Remote Desktop: the phone's own shape at a readable size.
   final (w, h) = size.width >= size.height ? (1600, (1600 * size.height / size.width).round()) : (1600, 900);
+  state.services.add(session);
   await session.open(signIn: signIn, locale: locale, width: w, height: h);
-  if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => kind == ServiceKind.ssh ? TerminalPage(session: session) : DesktopPage(session: session),
-    ),
-  );
-  await session.close();
-  session.dispose();
+  if (!context.mounted) return state.services.end(session);
+  await showService(context, session, page: page);
 }
+
+/// The page of an open service, again from the Sessions page; leaving it
+/// keeps the service open unless it ended (AppState.services).
+Future<void> showService(BuildContext context, ServiceSession session, {Widget Function(ServiceSession)? page}) async {
+  final services = AppScope.of(context).services;
+  final build = page ?? servicePage;
+  await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => build(session)));
+  await services.pageClosed(session);
+}
+
+/// The page a service shows in.
+Widget servicePage(ServiceSession s) => switch (s) {
+  FilesSession() => FilesPage(session: s),
+  _ when s.kind == ServiceKind.ssh => TerminalPage(session: s),
+  _ => DesktopPage(session: s),
+};
 
 /// Retries after a failure: the form for a sign-in problem, the key for a
 /// changed server key, else as before.
@@ -88,6 +119,7 @@ String serviceErrorText(AppLocalizations l, String? code) => switch (code) {
   'replaced' => l.svcReplaced,
   'unreadable' => l.svcUnreadable,
   'unsupported' => l.svcNoTunnel,
+  'no-sftp' => l.filesNoSftp,
   final other => failureText(l, other),
 };
 
@@ -232,4 +264,11 @@ class _SignInDialogState extends State<_SignInDialog> {
       ],
     );
   }
+}
+
+/// Ends a service and leaves its page (the back button keeps it open).
+Future<void> disconnectService(BuildContext context, ServiceSession s) async {
+  final services = AppScope.of(context).services;
+  Navigator.of(context).maybePop();
+  await services.end(s);
 }

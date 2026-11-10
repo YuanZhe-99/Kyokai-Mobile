@@ -3,11 +3,14 @@
 // does on the desktop).
 //
 // Read here: OpenSSH keys (Ed25519, RSA) without a passphrase, PEM PKCS#8
-// ("PRIVATE KEY") and PEM PKCS#1 ("RSA PRIVATE KEY"). Not yet: keys with a
-// passphrase and OpenSSH or SEC1 ECDSA keys (KeyImportError.unsupported).
+// ("PRIVATE KEY") and PEM PKCS#1 ("RSA PRIVATE KEY"). The rest — keys with a
+// passphrase, OpenSSH and SEC1 ECDSA keys — the service clients' library
+// reads with Go's x/crypto/ssh ([importWithClients]).
 
 import 'dart:convert';
 import 'dart:typed_data';
+
+import '../core/clients.dart';
 
 enum KeyImportError {
   /// Not a private key this reads.
@@ -18,6 +21,9 @@ enum KeyImportError {
 
   /// A kind of key this build cannot read yet.
   unsupported,
+
+  /// The passphrase given is not the key's.
+  wrongPassphrase,
 }
 
 class KeyImportException implements Exception {
@@ -196,5 +202,22 @@ class _SshReader {
       v = (v << 8) | BigInt.from(x);
     }
     return v;
+  }
+}
+
+/// What the clients' library reads (cmd/kyokai-clients keys.go key.import):
+/// any key with its passphrase, ECDSA P-256 and P-384 too.
+/// Returns: the private part for `keys.add`, base64.
+Future<String> importWithClients(String text, {String passphrase = ''}) async {
+  try {
+    final r = await clientsCallAsync('key.import', {'text': text, 'passphrase': passphrase});
+    return '${r['private']}';
+  } on ClientsError catch (e) {
+    throw KeyImportException(switch (e.message) {
+      'locked' => KeyImportError.locked,
+      'wrong-passphrase' => KeyImportError.wrongPassphrase,
+      'unsupported' => KeyImportError.unsupported,
+      _ => KeyImportError.notAKey,
+    });
   }
 }

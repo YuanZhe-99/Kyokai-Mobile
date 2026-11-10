@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../../data/app_state.dart';
 import '../../data/sessions.dart';
 import '../shell/app.dart';
+import 'clip_history.dart';
+import 'viewer_page.dart';
 
 /// Asks for the host's password: (password, remember) or null.
 Future<(String, bool)?> askPassword(BuildContext context, RemoteSession s) {
@@ -32,6 +34,7 @@ Future<(String, bool)?> askPassword(BuildContext context, RemoteSession s) {
               decoration: InputDecoration(
                 labelText: l.password,
                 suffixIcon: IconButton(
+                  tooltip: hide ? l.a11yShowPassword : l.a11yHidePassword,
                   onPressed: () => set(() => hide = !hide),
                   icon: Icon(hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                 ),
@@ -204,6 +207,27 @@ Future<void> showSessionMenu(
                 Navigator.pop(ctx);
                 onTypeText();
               }),
+              ListTile(
+                key: const ValueKey('clipHistory'),
+                leading: const Icon(Icons.content_paste_search),
+                title: Text(l.clipHistory),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ClipHistoryPage(deviceId: s.deviceId)));
+                },
+              ),
+              // Another open picture, shown in this one's place.
+              for (final other in AppScope.of(ctx).sessions.open.where((o) => o != s && o.hasPicture && !o.ended))
+                ListTile(
+                  key: ValueKey('switchTo${other.id}'),
+                  leading: const Icon(Icons.swap_horiz),
+                  title: Text(l.switchTo(other.title)),
+                  subtitle: Text(other.kind == SessionKind.nanokvm ? l.nanokvm : l.desktop),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => ViewerPage(session: other)));
+                  },
+                ),
               SwitchListTile(
                 secondary: const Icon(Icons.volume_up_outlined),
                 title: Text(l.sound),

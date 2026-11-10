@@ -145,10 +145,13 @@ class HostBars extends StatelessWidget {
 }
 
 class DeviceCard extends StatelessWidget {
-  const DeviceCard({super.key, required this.host, required this.status, required this.onTap, this.selected = false});
+  const DeviceCard({super.key, required this.host, required this.status, required this.onTap, this.selected = false, this.onWake});
   final RecentHost host;
   final Status status;
   final VoidCallback onTap;
+
+  /// Wakes the host's screen (home's quick action); null shows no button.
+  final VoidCallback? onWake;
   final bool selected;
 
   @override
@@ -195,6 +198,14 @@ class DeviceCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (onWake != null)
+                    IconButton(
+                      key: ValueKey('wake${host.deviceId}'),
+                      tooltip: l.actionWake,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onWake,
+                      icon: const Icon(Icons.light_mode_outlined, size: 20),
+                    ),
                   if (open > 0)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),

@@ -43,6 +43,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps remote desktop and SSH sessions to the user's own computers open while the app is in the background." />
         </service>
+        <!-- Images the app puts on the clipboard (Clip.kt): read by
+             the app that pastes one, which the clipboard grants. -->
+        <provider
+            android:name=".ClipProvider"
+            android:authorities="com.yuanzhe.kyokai.clip"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

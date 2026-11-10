@@ -2,7 +2,7 @@ name: kyokai_mobile
 description: "Kyokai controller for Android phones, tablets and foldables"
 publish_to: 'none'
 
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: ^3.13.5

@@ -23,7 +23,30 @@ const desktopWant = ['view-screen', 'control-input', 'clipboard', 'hear-sound'];
 /// What an AI link asks for: no picture, the host's AI.
 const aiWant = ['run-ai-task', 'approve-ai-action'];
 
-enum SessionKind { desktop, ai }
+/// What a NanoKVM session asks for: the computer wired to the host.
+const nanokvmWant = ['use-nanokvm'];
+
+/// What a wake asks for: input, which the wake action needs; no picture.
+const wakeWant = ['control-input'];
+
+/// desktop: the host's screen; ai: its AI, no picture; nanokvm: the
+/// computer wired to its NanoKVM USB; wake: a moment's session that wakes
+/// its screen and ends.
+enum SessionKind { desktop, ai, nanokvm, wake }
+
+/// Something that crossed a session's clipboard (media CLIPBOARD), for the
+/// history: text, or an image as PNG.
+class ClipEntry {
+  ClipEntry({required this.deviceId, required this.fromHost, required this.at, this.text, this.png, this.files = 0});
+  final String deviceId;
+  final bool fromHost;
+  final DateTime at;
+  final String? text;
+  final Uint8List? png;
+
+  /// Files offered through the clipboard: only counted, Android takes none.
+  final int files;
+}
 
 /// The viewer's picture settings (`quality`, `codec`).
 class Quality {
@@ -66,6 +89,85 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   RemoteSession? find(String deviceId, SessionKind kind) =>
       open.where((s) => s.deviceId == deviceId && s.kind == kind && !s.ended).firstOrNull;
 
+  // ---- Clipboard history ---------------------------------------------------
+
+  /// What crossed every session's clipboard, newest first, for this run of
+  /// the app (as the desktop viewer keeps it).
+  final List<ClipEntry> clipHistory = [];
+  static const clipHistoryMax = 50;
+
+  void _addClip(ClipEntry e) {
+    clipHistory.insert(0, e);
+    if (clipHistory.length > clipHistoryMax) clipHistory.removeLast();
+    notifyListeners();
+  }
+
+  void clearClipHistory() {
+    clipHistory.clear();
+    notifyListeners();
+  }
+
+  /// Puts a history entry on the phone's clipboard again; sessions then
+  /// offer it to their hosts as anything copied here.
+  Future<void> copyAgain(ClipEntry e) async {
+    if (e.text != null) {
+      await Native.setClipboardText(e.text!);
+    } else if (e.png != null) {
+      await Native.setClipboardImage(e.png!);
+    }
+  }
+
+  // ---- The hosts' AI tasks --------------------------------------------------
+
+  /// Every task each host showed while a link was open, by device and task
+  /// id: hosts send only their latest, so the history is kept here.
+  final Map<String, Map<int, Json>> _aiTasks = {};
+
+  /// A host's tasks seen so far, newest first.
+  List<Json> aiHistory(String deviceId) {
+    final tasks = (_aiTasks[deviceId]?.values ?? const <Json>[]).toList();
+    tasks.sort((a, b) => ((b['updated'] as num?) ?? 0).compareTo((a['updated'] as num?) ?? 0));
+    return tasks;
+  }
+
+  void _seenAiTask(String deviceId, Json task) {
+    final id = (task['id'] as num?)?.toInt();
+    if (id == null) return;
+    (_aiTasks[deviceId] ??= {})[id] = task;
+  }
+
+  // ---- Wake ----------------------------------------------------------------
+
+  /// Wakes a host's screen: through its open desktop session, else a
+  /// session of a moment that only sends the wake action.
+  /// Returns: null when sent, else why not (a session failure's code).
+  Future<String?> wake(String deviceId, {String? address, String? route}) async {
+    final live = open.where((s) => s.deviceId == deviceId && s.connected && s.mayControl).firstOrNull;
+    if (live != null) {
+      live.action('wake');
+      return null;
+    }
+    final s = await connect(deviceId, kind: SessionKind.wake, address: address, route: route);
+    final done = Completer<String?>();
+    void check() {
+      if (done.isCompleted) return;
+      if (s.woke) {
+        done.complete(null);
+      } else if (s.state == 'failed' || s.state == 'closed' || s.ended) {
+        done.complete(s.failure ?? s.dialError ?? s.state);
+      } else if (s.connected && !s.mayControl) {
+        done.complete('denied');
+      }
+    }
+
+    s.addListener(check);
+    check();
+    final why = await done.future.timeout(const Duration(seconds: 60), onTimeout: () => 'timeout');
+    s.removeListener(check);
+    if (why != null) unawaited(s.close());
+    return why;
+  }
+
   /// Opens (or returns the open) session to a host.
   Future<RemoteSession> connect(
     String deviceId, {
@@ -104,13 +206,21 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
     _updateNotice();
   }
 
+  /// Services open (AppState.services), named by the notification too.
+  List<String> _serviceTitles = const [];
+  set serviceTitles(List<String> v) {
+    _serviceTitles = v;
+    _updateNotice();
+  }
+
   void _updateNotice() {
     final live = open.where((s) => s.state == 'connected' || s.state == 'reconnecting').toList();
-    final text = live.isEmpty ? '' : live.map((s) => s.title).toSet().join(', ');
+    final titles = {...live.map((s) => s.title), ..._serviceTitles};
+    final text = titles.join(', ');
     if (text == _notice) return;
     _notice = text;
     unawaited(Native.sessionsNotice(text.isEmpty ? null : text).catchError((Object e) => Log.error('notice', e)));
-    unawaited(Native.keepScreenOn(live.any((s) => s.kind == SessionKind.desktop)));
+    unawaited(Native.keepScreenOn(live.any((s) => s.hasPicture)));
   }
 
   /// Offers what was copied on the phone to hosts that share the clipboard
@@ -118,6 +228,17 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _offerClipboard() async {
     if (!_front || !open.any((s) => s.connected && s.granted.contains('clipboard'))) return;
     try {
+      // An image first (its URI could pass for text): marked by its URI and
+      // when it was copied, so one copy is read and offered once.
+      final last = _lastClip;
+      final image = await Native.clipboardImage(unless: last != null && last.startsWith('png:') ? last.substring(4) : null);
+      if (image != null) {
+        if (image.png == null) return; // The one offered already.
+        _lastClip = 'png:${image.mark}';
+        if (image.png!.length > maxClipImage) return;
+        await engine.call<Object?>('android.clipboard', {'png': base64Encode(image.png!)});
+        return;
+      }
       final text = await Native.clipboardText();
       if (text == null || text.isEmpty || text == _lastClip) return;
       _lastClip = text;
@@ -127,10 +248,20 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// The largest image offered to hosts: the core's media packets carry at
+  /// most a few MB, and a large photo is not what the clipboard is for.
+  static const maxClipImage = 8 << 20;
+
   /// Text the host copied: put on the phone's clipboard, not offered back.
   Future<void> _fromHost(String text) async {
     _lastClip = text;
     await Native.setClipboardText(text);
+  }
+
+  /// An image the host copied: on the phone's clipboard, not offered back.
+  Future<void> _imageFromHost(Uint8List png) async {
+    final mark = await Native.setClipboardImage(png);
+    if (mark != null) _lastClip = 'png:$mark';
   }
 
   @override
@@ -186,6 +317,10 @@ class RemoteSession extends ChangeNotifier {
   bool _waitKey = true;
   DateTime _lastKeyAsk = DateTime(0);
   DateTime lastFrame = DateTime(0);
+
+  /// From dialing to the first frame of the picture, for diagnostics.
+  Duration? firstFrameAfter;
+  DateTime? _dialedAt;
   int framesShown = 0;
 
   // ---- What the host tells
@@ -213,7 +348,13 @@ class RemoteSession extends ChangeNotifier {
   bool get connected => state == 'connected';
   bool get confirming => state == 'confirming';
   String get title => peer.name.isNotEmpty ? peer.name : (_engine.status.host(deviceId)?.title ?? formatId(deviceId));
-  bool get mayControl => granted.contains('control-input');
+  bool get mayControl => granted.contains('control-input') || (kind == SessionKind.nanokvm && granted.contains('use-nanokvm'));
+
+  /// A wake session sent its action.
+  bool woke = false;
+
+  /// Shows a picture: a desktop, or the computer wired to a NanoKVM.
+  bool get hasPicture => kind == SessionKind.desktop || kind == SessionKind.nanokvm;
   bool get mayRunAi => granted.contains('run-ai-task');
   bool get mayApprove => granted.contains('approve-ai-action');
 
@@ -227,6 +368,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _dial(String password, bool remember) async {
+    _dialedAt = DateTime.now();
     dialError = null;
     failure = null;
     state = 'connecting';
@@ -236,7 +378,13 @@ class RemoteSession extends ChangeNotifier {
       final r = await _engine.act<Map<String, Object?>>('session.connect', {
         'device_id': deviceId,
         'password': password,
-        'want': kind == SessionKind.ai ? aiWant : desktopWant,
+        'want': switch (kind) {
+          SessionKind.desktop => desktopWant,
+          SessionKind.ai => aiWant,
+          SessionKind.nanokvm => nanokvmWant,
+          SessionKind.wake => wakeWant,
+        },
+        if (kind == SessionKind.nanokvm) 'nanokvm': true,
         'remember': remember,
         'address': ?address,
         'route': ?route,
@@ -292,7 +440,17 @@ class RemoteSession extends ChangeNotifier {
     _media = media;
     unawaited(media.open());
     _packets = media.packets.listen(_onPacket, onDone: () => Log.info('session', '$id: media ended'));
+    if (kind == SessionKind.wake) {
+      if (!mayControl) return; // [Sessions.wake] reports it.
+      action('wake');
+      woke = true;
+      notifyListeners();
+      // Long enough for the control message to leave.
+      Timer(const Duration(seconds: 2), () => unawaited(close()));
+      return;
+    }
     send({'type': 'key-frame'});
+    if (kind == SessionKind.nanokvm) _clipboardUse();
     if (kind == SessionKind.desktop) {
       _sendQuality();
       if (quality.codec != 'auto') send({'type': 'codec', 'codec': quality.codec});
@@ -369,14 +527,14 @@ class RemoteSession extends ChangeNotifier {
       case core.Packet.audio:
         if (sound) Native.feedSound(Uint8List.fromList(body));
       case core.Packet.clipboard:
-        final c = json();
-        if (c['from'] == 'host' && c['text'] is String && shareClipboard) unawaited(_owner._fromHost(c['text'] as String));
+        _clipboardPacket(json());
       case core.Packet.input:
         inputPaused = json()['paused'] == true;
         notifyListeners();
       case core.Packet.aiTask:
         aiTask = json();
         aiError = null;
+        _owner._seenAiTask(deviceId, aiTask!);
         notifyListeners();
       case core.Packet.aiError:
         aiError = '${json()['error']}';
@@ -387,6 +545,34 @@ class RemoteSession extends ChangeNotifier {
       case core.Packet.aiExport:
         aiExports.add(json());
     }
+  }
+
+  /// What crossed the clipboard (CLIPBOARD, the viewer's history): every
+  /// item goes to the history; what the host copied goes on the phone's
+  /// clipboard while this session shares it.
+  void _clipboardPacket(Json c) {
+    final fromHost = c['from'] == 'host';
+    final text = c['text'] is String ? c['text'] as String : null;
+    Uint8List? png;
+    if (c['png'] is String) {
+      try {
+        png = base64Decode(c['png'] as String);
+      } catch (_) {}
+    }
+    final files = c['files'] is List ? (c['files'] as List).length : 0;
+    if (text == null && png == null && files == 0) return;
+    final at = (c['at'] as num?)?.toInt();
+    _owner._addClip(ClipEntry(
+      deviceId: deviceId,
+      fromHost: fromHost,
+      at: at == null ? DateTime.now() : DateTime.fromMillisecondsSinceEpoch(at),
+      text: text,
+      png: png,
+      files: files,
+    ));
+    if (!fromHost || !shareClipboard) return;
+    if (text != null) unawaited(_owner._fromHost(text));
+    if (png != null) unawaited(_owner._imageFromHost(png).catchError((Object e) => Log.error('clipboard', e)));
   }
 
   Future<void> _openVideo() async {
@@ -466,8 +652,9 @@ class RemoteSession extends ChangeNotifier {
 
   void _onFrame(Uint8List body) {
     if (body.length < 9) return;
-    final key = body[0] & 1 == 1;
     final codec = videoStart['codec'];
+    // Every JPEG of a NanoKVM stands alone.
+    final key = body[0] & 1 == 1 || codec == 'mjpeg';
     if (codec == 'raw-rgba') {
       _rawFrame(Uint8List.sublistView(body, 9));
       return;
@@ -482,6 +669,10 @@ class RemoteSession extends ChangeNotifier {
     final pts = ByteData.sublistView(body, 1, 9).getUint64(0);
     final frame = Uint8List.sublistView(body, 9);
     final first = framesShown == 0;
+    if (first && _dialedAt != null) {
+      firstFrameAfter = DateTime.now().difference(_dialedAt!);
+      Log.info('video', '$id: first frame ${firstFrameAfter!.inMilliseconds} ms after dialing');
+    }
     framesShown++;
     if (++_fedHere == 10) _checkViewLater();
     lastFrame = DateTime.now();

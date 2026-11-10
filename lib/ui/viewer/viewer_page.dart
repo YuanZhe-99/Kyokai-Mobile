@@ -7,7 +7,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
 import 'package:flutter/services.dart';
@@ -325,34 +324,62 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
         Positioned.fill(
           child: ColoredBox(
             color: Colors.black,
-            child: RemoteSurface(
-              viewport: _viewport,
-              sink: this,
-              mode: prefs.pointerMode,
-              speed: prefs.pointerSpeed,
-              cursorSize: prefs.cursorSize,
-              child: _picture(),
+            child: Semantics(
+              label: context.l.a11yRemoteScreen(s.title),
+              child: RemoteSurface(
+                viewport: _viewport,
+                sink: this,
+                mode: prefs.pointerMode,
+                speed: prefs.pointerSpeed,
+                cursorSize: prefs.cursorSize,
+                child: _picture(),
+              ),
             ),
           ),
         ),
         Positioned(top: 10, right: 10, child: Minimap(viewport: _viewport)),
+        // The host's screen is asleep (its picture is the placeholder):
+        // offer to wake it, as the desktop viewer does.
+        if (s.connected && s.mayControl && s.kind == SessionKind.desktop && s.videoStart['placeholder'] == 'asleep')
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: Center(
+              child: FilledButton.tonalIcon(
+                key: const ValueKey('wakeOffer'),
+                onPressed: () => s.action('wake'),
+                icon: const Icon(Icons.light_mode_outlined),
+                label: Text('${l.hostAsleep} · ${l.actionWake}'),
+              ),
+            ),
+          ),
         ListenableBuilder(
           listenable: _viewport,
           builder: (context, _) => _viewport.scale > 1.01
               ? Positioned(
-                  top: 12,
-                  left: 10,
-                  child: GestureDetector(
-                    onTap: _viewport.reset,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: cs.surface.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${_viewport.scale.toStringAsFixed(1)}×',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                  top: 0,
+                  left: 0,
+                  // A 48 dp target around the small chip, for touch and TalkBack.
+                  child: Semantics(
+                    button: true,
+                    label: context.l.a11yResetZoom,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _viewport.reset,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 12, 12, 12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: cs.surface.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${_viewport.scale.toStringAsFixed(1)}×',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -666,11 +693,13 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
+                            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
                             onPressed: () => Navigator.of(context).maybePop(),
                             icon: const Icon(Icons.arrow_back),
                           ),
                           _headerActions(compact: true),
                           IconButton(
+                            tooltip: context.l.a11yHideToolbar,
                             onPressed: () => setState(() => _toolbar = false),
                             icon: const Icon(Icons.expand_less),
                           ),
@@ -730,6 +759,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                         opacity: _handleDrag == null ? 1 : 0.8,
                         child: IconButton.filledTonal(
                           key: const ValueKey('pull'),
+                          tooltip: context.l.a11yShowToolbar,
                           onPressed: () => setState(() => _toolbar = true),
                           icon: const Icon(Icons.expand_more),
                         ),
@@ -970,7 +1000,7 @@ class _DebugOverlayState extends State<_DebugOverlay> {
       if (i?['error'] != null) '${i!['error']}',
       'fps ${st['frames'] ?? '-'}/${st['fps'] ?? '-'}  delay ${st['delay_ms'] ?? '-'} ms  enc ${st['encode_ms'] ?? '-'} ms',
       'bitrate ${st['bitrate'] is num ? '${((st['bitrate'] as num) / 1e6).toStringAsFixed(1)} Mb/s' : '-'}  ${st['video'] ?? ''}',
-      'frames in ${s.framesShown}  session ${s.id}  ${s.state}',
+      'frames in ${s.framesShown}${s.firstFrameAfter == null ? '' : '  first ${s.firstFrameAfter!.inMilliseconds} ms'}  session ${s.id}  ${s.state}',
     ];
     return IgnorePointer(
       child: Container(

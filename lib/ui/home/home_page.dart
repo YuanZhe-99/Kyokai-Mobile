@@ -231,6 +231,7 @@ class _HomePageState extends State<HomePage> {
                     host: h,
                     status: status,
                     selected: selected == h.deviceId,
+                    onWake: h.has('wake') ? () => wakeHost(context, h.deviceId) : null,
                     onTap: () {
                       if (selected != null) {
                         setState(() => _selected = h.deviceId);
@@ -315,6 +316,26 @@ Future<void> openDesktop(BuildContext context, String deviceId, {String? address
   final session = await state.sessions.connect(deviceId, address: address, route: route);
   if (!context.mounted) return;
   unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => ViewerPage(session: session))));
+}
+
+/// Opens the computer wired to a host's NanoKVM USB and shows its screen.
+Future<void> openNanokvm(BuildContext context, String deviceId) async {
+  final state = AppScope.of(context);
+  final nav = Navigator.of(context);
+  final session = await state.sessions.connect(deviceId, kind: SessionKind.nanokvm);
+  if (!context.mounted) return;
+  unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => ViewerPage(session: session))));
+}
+
+/// Wakes a host's screen and says how it went.
+Future<void> wakeHost(BuildContext context, String deviceId) async {
+  final l = context.l;
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(SnackBar(content: Text(l.waking)));
+  final why = await AppScope.of(context).sessions.wake(deviceId);
+  messenger.hideCurrentSnackBar();
+  if (!context.mounted) return;
+  messenger.showSnackBar(SnackBar(content: Text(why == null ? l.wakeSent : '${l.wakeFailed}: ${failureText(l, why)}')));
 }
 
 /// Opens the AI link to a host (no picture) and shows its task.

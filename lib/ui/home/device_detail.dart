@@ -160,6 +160,27 @@ class _Body extends StatelessWidget {
                 onPressed: () => openService(context, host.deviceId, ServiceKind.values.byName(service), host.title),
                 side: services.contains(service) ? BorderSide(color: cs.primary) : null,
               ),
+            ActionChip(
+              key: const ValueKey('files'),
+              avatar: const Icon(Icons.folder_outlined, size: 18),
+              label: Text(l.filesTitle),
+              onPressed: () => openFiles(context, host.deviceId, host.title),
+              side: services.contains('ssh') ? BorderSide(color: cs.primary) : null,
+            ),
+            // The computer wired to the host's NanoKVM USB, where it has one.
+            if (host.has('nanokvm') && w?.nanokvm != false)
+              ActionChip(
+                key: const ValueKey('nanokvm'),
+                avatar: const Icon(Icons.usb, size: 18),
+                label: Text(l.nanokvm),
+                onPressed: () => openNanokvm(context, host.deviceId),
+              ),
+            ActionChip(
+              key: const ValueKey('wake'),
+              avatar: const Icon(Icons.light_mode_outlined, size: 18),
+              label: Text(l.actionWake),
+              onPressed: () => wakeHost(context, host.deviceId),
+            ),
           ],
         ),
         if (w != null && w.live)

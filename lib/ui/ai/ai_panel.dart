@@ -12,6 +12,7 @@ import '../../data/sessions.dart';
 import '../home/device_widgets.dart';
 import '../shell/app.dart';
 import '../viewer/session_sheets.dart';
+import 'ai_history.dart';
 
 class AiPanel extends StatefulWidget {
   const AiPanel({super.key, required this.deviceId, this.onClose});
@@ -78,7 +79,13 @@ class _AiPanelState extends State<AiPanel> {
               Icon(Icons.auto_awesome, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text(l.aiOnHost, style: tt.titleMedium)),
-              if (widget.onClose != null) IconButton(onPressed: widget.onClose, icon: const Icon(Icons.close)),
+              IconButton(
+                key: const ValueKey('aiHistory'),
+                tooltip: l.aiHistory,
+                onPressed: () => showAiHistory(context, widget.deviceId),
+                icon: const Icon(Icons.history),
+              ),
+              if (widget.onClose != null) IconButton(tooltip: MaterialLocalizations.of(context).closeButtonTooltip, onPressed: widget.onClose, icon: const Icon(Icons.close)),
             ],
           ),
         ),
@@ -263,7 +270,7 @@ class _AiPanelState extends State<AiPanel> {
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     hintText: live ? l.aiReplyHint : l.aiTaskHint,
-                    suffixIcon: IconButton(onPressed: _submit, icon: const Icon(Icons.send)),
+                    suffixIcon: IconButton(tooltip: l.aiSend, onPressed: _submit, icon: const Icon(Icons.send)),
                   ),
                 ),
               ],

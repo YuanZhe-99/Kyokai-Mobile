@@ -44,12 +44,18 @@ class Engine extends ChangeNotifier {
       await Directory(stateDir).create(recursive: true);
       final key = await Native.masterKey();
       if (key == null) Log.error('engine', 'the Android Keystore cannot keep the secrets key: memory only');
-      final first = await core.start({
-        'version': kyokaiVersion,
-        'state_dir': stateDir,
-        'profile': '',
-        'master_key': ?key,
-      });
+      Map<String, Object?> first;
+      try {
+        first = await core.start({
+          'version': kyokaiVersion,
+          'state_dir': stateDir,
+          'profile': '',
+          'master_key': ?key,
+        });
+      } on core.CoreError catch (e) {
+        if (!e.message.contains('already started')) rethrow;
+        first = await _adopt();
+      }
       status = Status(first);
       started = true;
       Log.info('engine', 'core started: ${status.deviceId}, ${status.persistence}');
@@ -72,6 +78,24 @@ class Engine extends ChangeNotifier {
       return;
     }
     _tick = Timer.periodic(const Duration(milliseconds: 500), _onTick);
+  }
+
+  /// The core outlives the app's Flutter engine: when Android makes the
+  /// activity again in the same process (a fold, the system taking back
+  /// memory from the UI only), the core is still running. Its sessions
+  /// belonged to the old screens, whose readers are gone: they are closed,
+  /// and the core is used as it is.
+  Future<Map<String, Object?>> _adopt() async {
+    Log.info('engine', 'the core was already running: taking it over');
+    final now = Status(await core.call<Map<String, Object?>>('status'));
+    for (final s in now.sessions) {
+      try {
+        await core.call<Object?>('session.close', {'id': s.id});
+      } catch (e) {
+        Log.error('engine', e);
+      }
+    }
+    return core.call<Map<String, Object?>>('status');
   }
 
   void _onTick(Timer t) {

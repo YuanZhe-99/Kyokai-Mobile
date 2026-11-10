@@ -14,6 +14,7 @@ import '../keyboard/hardware_keys.dart';
 import '../keyboard/keyboard.dart';
 import '../keyboard/keys.dart';
 import '../shell/app.dart';
+import 'service_open.dart';
 import '../viewer/session_sheets.dart' show typeTextInto;
 import '../viewer/surface.dart';
 import 'terminal_page.dart';
@@ -49,9 +50,28 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
     WidgetsBinding.instance.addObserver(this);
   }
 
+  /// Remote Desktop follows the screen's shape (a rotation, a fold): a
+  /// desktop 1600 wide in that shape when it is wider than tall, asked for
+  /// once it settles.
+  (int, int)? _shape;
+  Timer? _reshape;
+
+  void _followShape(Size screen) {
+    if (s.kind != ServiceKind.rdp || !s.connected || screen.isEmpty) return;
+    // Upright, a usual 16:9 desktop (as it opened), panned and zoomed.
+    final want = screen.width >= screen.height ? (1600, (1600 * screen.height / screen.width).round().clamp(480, 2048)) : (1600, 900);
+    if (want == _shape) return;
+    final first = _shape == null;
+    _shape = want;
+    if (first && (s.width, s.height) == want) return;
+    _reshape?.cancel();
+    _reshape = Timer(const Duration(milliseconds: 700), () => s.display(want.$1, want.$2));
+  }
+
   @override
   void dispose() {
     s.removeListener(_onSession);
+    _reshape?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _hw.releaseAll(_send);
     _focus.dispose();
@@ -150,6 +170,7 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
     final cs = Theme.of(context).colorScheme;
     final prefs = AppScope.of(context).prefs;
     _viewport.pinTop = prefs.pictureTop;
+    _followShape(MediaQuery.sizeOf(context));
     final picture = s.picture;
     // On entry only: the keyboard opens by itself when the room under the
     // picture holds it.
@@ -192,12 +213,15 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
                     _ctrlAltDel();
                   case 'paste':
                     await _offerClipboard();
+                  case 'disconnect':
+                    await disconnectService(context, s);
                 }
               },
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'text', child: Text(l.typeText)),
                 PopupMenuItem(value: 'paste', child: Text(l.sendClipboard)),
                 const PopupMenuItem(value: 'cad', child: Text('Ctrl+Alt+Del')),
+                PopupMenuItem(value: 'disconnect', child: Text(l.disconnect)),
               ],
             ),
           ],

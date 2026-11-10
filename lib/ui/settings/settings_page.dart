@@ -405,12 +405,32 @@ class _KeysPageState extends State<KeysPage> {
   Future<void> _import(String text, String name) async {
     final l = context.l;
     final engine = AppScope.of(context).engine;
-    final String private;
+    String? private;
     try {
       private = importPrivateKey(text);
     } on KeyImportException catch (e) {
-      return _failed(e.error);
+      if (e.error == KeyImportError.notAKey) return _failed(e.error);
     }
+    // A passphrase or an ECDSA key: the clients' library reads it, asking
+    // for the passphrase until it is right or the person gives up.
+    var passphrase = '';
+    var wrong = false;
+    while (private == null) {
+      try {
+        private = await importWithClients(text, passphrase: passphrase);
+      } on KeyImportException catch (e) {
+        if (e.error != KeyImportError.locked && e.error != KeyImportError.wrongPassphrase) return _failed(e.error);
+        if (!mounted) return;
+        if (passphrase.isNotEmpty) wrong = true;
+        final typed = await _askPassphrase(wrong);
+        if (typed == null || typed.isEmpty || !mounted) return;
+        passphrase = typed;
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+    }
+    if (!mounted) return;
     final named = await _ask(context, l.keyName, name);
     if (named == null || !mounted) return;
     try {
@@ -429,9 +449,34 @@ class _KeysPageState extends State<KeysPage> {
           KeyImportError.notAKey => l.keyNotAKey,
           KeyImportError.locked => l.keyLocked,
           KeyImportError.unsupported => l.keyUnsupported,
+          KeyImportError.wrongPassphrase => l.keyWrongPassphrase,
         }),
       ),
     );
+  }
+
+  /// Asks for a key file's passphrase; [wrong], after one that was not it.
+  Future<String?> _askPassphrase(bool wrong) {
+    final l = context.l;
+    final c = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.keyPassphrase),
+        content: TextField(
+          key: const ValueKey('keyPassphrase'),
+          controller: c,
+          autofocus: true,
+          obscureText: true,
+          decoration: InputDecoration(errorText: wrong ? l.keyWrongPassphrase : null),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: Text(l.ok)),
+        ],
+      ),
+    ).whenComplete(() => Future<void>.delayed(const Duration(seconds: 1), c.dispose));
   }
 
   Future<void> _generate() async {
