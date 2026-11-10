@@ -307,6 +307,8 @@ class RemoteSession extends ChangeNotifier {
     _packets = null;
     _media?.close();
     _media = null;
+    _viewWatch?.cancel();
+    _viewWatch = null;
     final t = texture;
     texture = null;
     if (t != null) unawaited(Native.closeVideo(t.id));
@@ -403,7 +405,7 @@ class RemoteSession extends ChangeNotifier {
     if (codec == 'raw-rgba') return; // Drawn from the frames themselves.
     _opening = true;
     try {
-      final t = await Native.openVideo(codec, w, h, view: _owner.videoView);
+      final t = await Native.openVideo(codec, w, h, view: _owner.videoView && !_viewFailed);
       if (_videoStart == null || !identical(start, videoStart)) {
         if (t != null) await Native.closeVideo(t.id);
         return;
@@ -415,6 +417,7 @@ class RemoteSession extends ChangeNotifier {
         send({'type': 'no-picture', 'for_ms': 0, 'why': 'decode-error'});
       } else {
         requestKeyFrame(force: true);
+        if (t.view) _watchView(t);
       }
     } catch (e) {
       Log.error('video', e);
@@ -423,6 +426,42 @@ class RemoteSession extends ChangeNotifier {
       _opening = false;
       notifyListeners();
     }
+  }
+
+  /// The SurfaceView never took this session's frames (its surface did not
+  /// come, or went): the picture uses a Flutter texture from then on.
+  bool _viewFailed = false;
+
+  /// Frames given to the decoder since it opened, for [_watchView].
+  int _fedHere = 0;
+
+  /// A decoder drawing into a SurfaceView drops every frame while it has no
+  /// surface. Frames arriving and none taken a few seconds on: open it
+  /// again on a texture, which needs no view.
+  void _watchView(VideoTexture t) {
+    _fedHere = 0;
+    _viewWatch?.cancel();
+    _viewWatch = null;
+    _watched = t;
+  }
+
+  VideoTexture? _watched;
+  Timer? _viewWatch;
+
+  /// Frames are flowing to a watched view: check on it a while later.
+  void _checkViewLater() {
+    final t = _watched;
+    _watched = null;
+    if (t == null || !identical(texture, t)) return;
+    _viewWatch = Timer(const Duration(seconds: 4), () async {
+      _viewWatch = null;
+      if (!identical(texture, t)) return;
+      final info = await Native.videoInfo(t.id);
+      if (!identical(texture, t) || ((info?['fed'] as num?) ?? 0) > 0) return;
+      Log.info('video', '$id: the view took none of $_fedHere frames; using a texture');
+      _viewFailed = true;
+      await _openVideo();
+    });
   }
 
   void _onFrame(Uint8List body) {
@@ -444,6 +483,7 @@ class RemoteSession extends ChangeNotifier {
     final frame = Uint8List.sublistView(body, 9);
     final first = framesShown == 0;
     framesShown++;
+    if (++_fedHere == 10) _checkViewLater();
     lastFrame = DateTime.now();
     if (first) notifyListeners();
     unawaited(

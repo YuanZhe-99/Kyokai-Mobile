@@ -31,7 +31,7 @@ private class VideoView(context: Context, private val video: () -> Video?) : Pla
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
-                video()?.attach(null)
+                video()?.detach(holder.surface)
             }
         })
     }

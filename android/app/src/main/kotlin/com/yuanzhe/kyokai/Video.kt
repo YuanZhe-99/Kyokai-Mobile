@@ -95,7 +95,20 @@ class Video private constructor(
      * Gives the decoder the SurfaceView's surface, or takes it away (null)
      * when the view goes; it starts again from a key frame on the next.
      */
-    fun attach(surface: android.view.Surface?) {
+    fun attach(surface: android.view.Surface?) = synchronized(this) { attachLocked(surface) }
+
+    /**
+     * The SurfaceView holding [surface] is going. Only that surface is let
+     * go: when the page rebuilds its picture (the keyboard opening on entry
+     * moves it), the new view's surface can arrive before the old view's
+     * goes, and the decoder must keep the new one.
+     */
+    fun detach(surface: android.view.Surface) = synchronized(this) {
+        if (viewSurface === surface) attachLocked(null)
+        else log("video $id: an old view's surface went; kept the current one")
+    }
+
+    private fun attachLocked(surface: android.view.Surface?) {
         val released = if (surface == null) java.util.concurrent.CountDownLatch(1) else null
         pendingRelease = released
         viewSurface = surface

@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   packetTests();
   cursorEchoTests();
+  viewFallbackTests();
   laptopTests();
   laptopSafeAreaTests();
   keyboardOnEntryTests();
@@ -117,6 +118,47 @@ void packetTests() {
     expect(find.byType(PlatformViewLink), findsOneWidget);
     expect(t.getSize(find.byType(PlatformViewLink)).width, greaterThan(100));
     await t.pumpWidget(const SizedBox());
+    state.sessions.dispose();
+  });
+}
+
+void viewFallbackTests() {
+  testWidgets('frames the SurfaceView never takes move the picture to a texture', (t) async {
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final opened = <bool>[];
+    var next = 7;
+    messenger.setMockMethodCallHandler(const MethodChannel('kyokai/native'), (call) async {
+      if (call.method == 'videoOpen') {
+        final view = (call.arguments as Map)['view'] == true;
+        opened.add(view);
+        return {'texture': next++, 'decoder': 'c2.test.hevc', 'hardware': true, 'view': view};
+      }
+      // The view's surface never came: the decoder took nothing.
+      if (call.method == 'videoInfo') return {'fed': 0, 'decoded': 0, 'errors': 0};
+      return null;
+    });
+    messenger.setMockMessageHandler('kyokai/video', (m) async => ByteData(1));
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(const MethodChannel('kyokai/native'), null);
+      messenger.setMockMessageHandler('kyokai/video', null);
+    });
+    SharedPreferences.setMockInitialValues({});
+    final state = AppState(prefs: await Prefs.load(), engine: Engine());
+    final s = RemoteSession.forTest(state.sessions, '123456789')
+      ..state = 'connected'
+      ..granted = const ['view-screen', 'control-input'];
+    s.packetForTest(_packet(1, {'codec': 'hevc', 'width': 1920, 'height': 1080}));
+    await t.pump();
+    final frame = Uint8List(9 + 16)..[0] = 1;
+    frame.setAll(9, [0, 0, 0, 1, 0x40, 1, 0, 0, 0, 1, 0x26, 1, 0xAF, 0, 0, 0]);
+    for (var i = 0; i < 20; i++) {
+      s.packetForTest(Uint8List.fromList([2, ...frame]));
+      await t.pump(const Duration(milliseconds: 50));
+    }
+    await t.pump(const Duration(seconds: 4));
+    await t.pump();
+    expect(opened, [true, false]);
+    expect(s.texture?.view, false);
     state.sessions.dispose();
   });
 }
