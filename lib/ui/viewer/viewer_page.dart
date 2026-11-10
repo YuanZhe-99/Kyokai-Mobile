@@ -258,7 +258,11 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
     final l = context.l;
     final cs = Theme.of(context).colorScheme;
     final overlay = _stateOverlay();
+    // Fills what it is given: inside a Row the height is only a limit, and a
+    // Stack would take the size of its unpositioned children (none, or the
+    // zoom chip's empty box), leaving the picture 0 px tall.
     return Stack(
+      fit: StackFit.expand,
       children: [
         Positioned.fill(
           child: ColoredBox(
@@ -444,6 +448,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
           children: [
             Expanded(
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(child: _surface(showButtons: !_keyboard || wide)),
                   if (showAiPanel)

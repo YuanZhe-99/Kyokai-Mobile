@@ -22,6 +22,19 @@ Future<void> main() async {
     Log.error('flutter', details.exception, details.stack);
     FlutterError.presentError(details);
   };
+  // A widget that fails to build says why where it would be, in release
+  // builds too: a blank area tells a tester nothing.
+  ErrorWidget.builder = (details) => ColoredBox(
+    color: const Color(0xFF8B0000),
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Text(
+        '${details.exception}',
+        style: const TextStyle(color: Color(0xFFFFFFFF), fontSize: 12),
+        textDirection: TextDirection.ltr,
+      ),
+    ),
+  );
   final prefs = await Prefs.load();
   Native.listen();
   final engine = Engine();
