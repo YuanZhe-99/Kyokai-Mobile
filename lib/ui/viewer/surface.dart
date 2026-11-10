@@ -127,6 +127,11 @@ class RemoteViewport extends ChangeNotifier {
     if (d != Offset.zero) pan(d);
   }
 
+  /// Whether the whole picture still shows at the view's full width with
+  /// [height] taken from the bottom of the view (for a keyboard).
+  bool roomBelow(double height) =>
+      !view.isEmpty && !picture.isEmpty && view.height - height >= view.width * picture.height / picture.width;
+
   /// The part of the picture in view, as fractions (for the minimap).
   Rect get visible {
     final s = shown;

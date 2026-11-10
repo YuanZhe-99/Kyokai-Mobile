@@ -5,6 +5,7 @@ import 'package:kyokai_mobile/ui/keyboard/keys.dart';
 import 'package:kyokai_mobile/ui/viewer/surface.dart';
 
 void main() {
+  roomTests();
   pinTopTests();
   group('device IDs', () {
     test('format in groups of three', () {
@@ -94,5 +95,15 @@ void pinTopTests() {
     v.zoom(3, const Offset(200, 200));
     v.zoom(1 / 3, const Offset(200, 200));
     expect(v.origin.dy, 0, reason: 'back at the smallest, still at the top');
+  });
+}
+
+void roomTests() {
+  test('room below the picture for a keyboard', () {
+    final v = RemoteViewport()..layout(const Size(412, 700), const Size(1600, 1000));
+    // The picture is 257.5 tall at full width: 442 under it.
+    expect(v.roomBelow(264), isTrue);
+    expect(v.roomBelow(450), isFalse);
+    expect(RemoteViewport().roomBelow(10), isFalse, reason: 'nothing laid out yet');
   });
 }

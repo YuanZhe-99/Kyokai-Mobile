@@ -11,6 +11,7 @@ import 'package:kyokai_mobile/data/prefs.dart';
 import 'package:kyokai_mobile/data/sessions.dart';
 import 'package:kyokai_mobile/l10n/gen/app_localizations.dart';
 import 'package:kyokai_mobile/ui/keyboard/keyboard.dart';
+import 'package:kyokai_mobile/ui/viewer/posture.dart';
 import 'package:kyokai_mobile/ui/viewer/surface.dart';
 import 'package:kyokai_mobile/ui/viewer/viewer_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   packetTests();
   laptopTests();
+  keyboardOnEntryTests();
   // An unfolded fold, a phone upright and on its side.
   for (final size in const [Size(1000, 760), Size(412, 915), Size(915, 412)]) {
     testWidgets('a connected session shows its picture at $size', (t) async {
@@ -154,4 +156,48 @@ void laptopTests() {
       state.sessions.dispose();
     });
   }
+}
+
+void keyboardOnEntryTests() {
+  for (final (size, shown) in [(const Size(412, 915), true), (const Size(1000, 760), false)]) {
+    testWidgets('the keyboard ${shown ? 'opens' : 'stays closed'} on entry at $size', (t) async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState(prefs: await Prefs.load(), engine: Engine());
+      final s = RemoteSession.forTest(state.sessions, '123456789')
+        ..state = 'connected'
+        ..granted = const ['view-screen', 'control-input']
+        ..pictureSize = const Size(2560, 1600)
+        ..texture = VideoTexture(7, 'c2.test.hevc.decoder', true);
+      t.view.physicalSize = size;
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(AppScope(
+        state: state,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ViewerPage(session: s),
+        ),
+      ));
+      await t.pump();
+      await t.pump();
+      expect(find.byType(RemoteKeyboard), shown ? findsOneWidget : findsNothing);
+      await t.pumpWidget(const SizedBox());
+      state.sessions.dispose();
+    });
+  }
+
+  testWidgets('the hinge sensor alone finds laptop posture', (t) async {
+    t.view.physicalSize = const Size(1000, 760);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    (Rect, PostureSource)? found;
+    for (final angle in [100.0, 175.0, null]) {
+      await t.pumpWidget(Builder(builder: (context) {
+        found = laptopHinge(context, angle: angle);
+        return const SizedBox();
+      }));
+      expect(found?.$2, angle == 100 ? PostureSource.hingeSensor : null);
+    }
+  });
 }

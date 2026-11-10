@@ -5,7 +5,7 @@
 // split) and the host's AI beside the picture.
 
 import 'dart:async';
-import 'dart:ui' show DisplayFeatureState, DisplayFeatureType;
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
@@ -23,6 +23,7 @@ import '../keyboard/keyboard.dart';
 import '../keyboard/keys.dart';
 import '../shell/app.dart';
 import 'session_sheets.dart';
+import 'posture.dart';
 import 'surface.dart';
 import 'touchpad.dart';
 
@@ -51,6 +52,9 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   @override
   void initState() {
     super.initState();
+    // Laptop mode also reads the hinge's angle (posture.dart).
+    unawaited(Native.watchHinge(true));
+    Native.hingeAngle.addListener(_onHinge);
     s.addListener(_onSession);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
@@ -58,6 +62,8 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   @override
   void dispose() {
     s.removeListener(_onSession);
+    Native.hingeAngle.removeListener(_onHinge);
+    unawaited(Native.watchHinge(false));
     _moveTimer?.cancel();
     _keyboardKey.currentState?.releaseAll();
     _hw.releaseAll(s.scan);
@@ -82,6 +88,33 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   }
 
   bool _fingerDown = false;
+
+  /// Whether the keyboard was considered on entry (once a page).
+  bool _keyboardDecided = false;
+
+  /// On entry only: the keyboard opens by itself when the room under the
+  /// picture holds it, so it costs no picture.
+  void _maybeShowKeyboard() {
+    if (_keyboardDecided || _keyboard) return;
+    if (s.pictureSize.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _keyboardDecided || _viewport.view.isEmpty) return;
+      _keyboardDecided = true;
+      final width = MediaQuery.sizeOf(context).width;
+      final kb = RemoteKeyboard.heightFor(width, split: AppScope.of(context).prefs.splitKeyboard);
+      if (_viewport.roomBelow(kb)) setState(() => _keyboard = true);
+    });
+  }
+
+  // The layout follows the hinge only where the angle crosses laptop posture.
+  bool? _halfOpen;
+  void _onHinge() {
+    final a = Native.hingeAngle.value;
+    final half = a != null && a >= 30 && a <= 150;
+    if (half == _halfOpen) return;
+    _halfOpen = half;
+    if (mounted) setState(() {});
+  }
 
   Future<void> _askPassword() async {
     final r = await askPassword(context, s);
@@ -464,6 +497,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
 
   Widget _standard(bool wide) {
     final cs = Theme.of(context).colorScheme;
+    _maybeShowKeyboard();
     final showAiPanel = wide && _ai && MediaQuery.sizeOf(context).width >= 840;
     return Scaffold(
       backgroundColor: cs.surface,
@@ -516,15 +550,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   /// mode is on.
   Rect? _laptopHinge() {
     if (!AppScope.of(context).prefs.laptopMode) return null;
-    for (final f in MediaQuery.displayFeaturesOf(context)) {
-      final across = f.bounds.width > f.bounds.height;
-      if ((f.type == DisplayFeatureType.hinge || f.type == DisplayFeatureType.fold) &&
-          f.state == DisplayFeatureState.postureHalfOpened &&
-          across) {
-        return f.bounds;
-      }
-    }
-    return null;
+    return laptopHinge(context, angle: Native.hingeAngle.value)?.$1;
   }
 
   /// Laptop posture: the picture above the hinge with the floating toolbar;

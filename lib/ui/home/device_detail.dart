@@ -239,7 +239,30 @@ class _Body extends StatelessWidget {
             leading: const Icon(Icons.key_outlined),
             title: Text(l.signInKey),
             subtitle: Text(host.saved['key'] == true ? l.keyAdmitted : l.notSaved),
+            trailing: host.saved['key'] == true
+                ? TextButton(
+                    onPressed: () => engine.act<Object?>('credentials.forget', {'device_id': host.deviceId, 'service': 'key'}),
+                    child: Text(l.forget),
+                  )
+                : null,
           ),
+          // Each service's sign-in, forgotten on its own (as on the desktop).
+          for (final (service, icon, label) in [
+            ('ssh', Icons.terminal, l.serviceSsh),
+            ('rdp', Icons.window_outlined, l.serviceRdp),
+            ('vnc', Icons.screen_share_outlined, l.serviceVnc),
+          ])
+            ListTile(
+              leading: Icon(icon),
+              title: Text(label),
+              subtitle: Text(host.saved[service] == true ? l.saved : l.notSaved),
+              trailing: host.saved[service] == true
+                  ? TextButton(
+                      onPressed: () => engine.act<Object?>('credentials.forget', {'device_id': host.deviceId, 'service': service}),
+                      child: Text(l.forget),
+                    )
+                  : null,
+            ),
           ListTile(
             leading: const Icon(Icons.fingerprint),
             title: Text(l.forgetIdentity),

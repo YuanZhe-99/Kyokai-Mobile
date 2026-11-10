@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../data/log.dart';
@@ -21,7 +22,25 @@ abstract final class Native {
     _events.setMethodCallHandler((call) async {
       if (call.method == 'keyFrame') keyFrames.add((call.arguments as num).toInt());
       if (call.method == 'log') Log.info('native', '${call.arguments}');
+      if (call.method == 'hinge') hingeAngle.value = (call.arguments as num).toDouble();
     });
+  }
+
+  /// A foldable's hinge angle (0 closed, 180 flat) while someone watches it;
+  /// null before the first reading or without a sensor.
+  static final hingeAngle = ValueNotifier<double?>(null);
+  static int _hingeWatchers = 0;
+
+  /// Whether the device has a hinge sensor (null until asked).
+  static bool? hingeSensor;
+
+  /// Starts or stops (counted) the hinge angle's readings.
+  static Future<void> watchHinge(bool on) async {
+    _hingeWatchers = (_hingeWatchers + (on ? 1 : -1)).clamp(0, 1 << 20);
+    if (on && _hingeWatchers != 1 || !on && _hingeWatchers != 0) return;
+    try {
+      hingeSensor = await _m.invokeMethod<bool>('hinge', {'on': on});
+    } catch (_) {}
   }
 
   /// The secrets store's key, base64; null when the Keystore cannot keep it.

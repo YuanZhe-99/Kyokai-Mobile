@@ -37,6 +37,7 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
   // 2 middle, 4 right).
   int _x = 0, _y = 0, _buttons = 0;
   bool _shift = false;
+  bool _keyboardDecided = false;
 
   ServiceSession get s => widget.session;
   bool get _vnc => s.kind == ServiceKind.vnc;
@@ -150,6 +151,16 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
     final prefs = AppScope.of(context).prefs;
     _viewport.pinTop = prefs.pictureTop;
     final picture = s.picture;
+    // On entry only: the keyboard opens by itself when the room under the
+    // picture holds it.
+    if (!_keyboardDecided && picture != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _keyboardDecided || _viewport.view.isEmpty) return;
+        _keyboardDecided = true;
+        final kb = RemoteKeyboard.heightFor(MediaQuery.sizeOf(context).width, split: prefs.splitKeyboard);
+        if (!_keyboard && _viewport.roomBelow(kb)) setState(() => _keyboard = true);
+      });
+    }
     return Focus(
       focusNode: _focus,
       autofocus: true,

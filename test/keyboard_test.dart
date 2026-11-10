@@ -25,6 +25,7 @@ Future<_Sent> _pump(WidgetTester t, {double width = 390, HostOs os = HostOs.wind
 }
 
 void main() {
+  heightTests();
   test('keysyms follow Shift', () {
     expect(keysymFor(usKeys['a']!.$1, shift: false), 0x61);
     expect(keysymFor(usKeys['a']!.$1, shift: true), 0x41);
@@ -109,4 +110,23 @@ void main() {
     await t.tap(find.text('Win').first);
     expect(sent.events, [(Scan.lwin, true), (Scan.lwin, false)]);
   });
+}
+
+void heightTests() {
+  for (final (w, split) in [(390.0, false), (1000.0, false), (1000.0, true)]) {
+    testWidgets('heightFor is the keyboard\'s height at $w${split ? ', split' : ''}', (t) async {
+      t.view.physicalSize = Size(w, 1200);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.bottomCenter,
+            child: RemoteKeyboard(send: (_, _, {required caps}) {}, onHide: () {}, split: split, onSplitChanged: (_) {}),
+          ),
+        ),
+      ));
+      expect(t.getSize(find.byType(RemoteKeyboard)).height, RemoteKeyboard.heightFor(w, split: split));
+    });
+  }
 }

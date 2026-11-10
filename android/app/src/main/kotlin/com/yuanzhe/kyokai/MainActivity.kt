@@ -18,6 +18,7 @@ import java.nio.ByteOrder
 class MainActivity : FlutterActivity() {
     private val videos = HashMap<Long, Video>()
     private var sound: Sound? = null
+    private var hinge: Hinge? = null
     private lateinit var events: MethodChannel
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -80,6 +81,13 @@ class MainActivity : FlutterActivity() {
                         SessionService.update(this, text)
                         result.success(null)
                     }
+                    "hinge" -> {
+                        // On: angles come as "hinge" events; the answer says whether
+                        // there is a sensor.
+                        val h = hinge ?: Hinge(this) { a -> events.invokeMethod("hinge", a.toDouble()) }.also { hinge = it }
+                        if (call.argument<Boolean>("on") == true) h.start() else h.stop()
+                        result.success(h.present)
+                    }
                     "device" -> result.success(
                         mapOf(
                             "android" to android.os.Build.VERSION.RELEASE,
@@ -122,6 +130,7 @@ class MainActivity : FlutterActivity() {
         videos.values.forEach { it.close() }
         videos.clear()
         sound?.close()
+        hinge?.stop()
         super.onDestroy()
     }
 }
