@@ -5,6 +5,7 @@
 // split) and the host's AI beside the picture.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 
 import 'package:flutter/material.dart';
@@ -557,17 +558,26 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   /// below it the full keyboard and a touchpad filling what is left.
   Widget _laptop(Rect hinge) {
     final cs = Theme.of(context).colorScheme;
+    // Room for the status bar above the picture and the navigation bar
+    // under the keyboard, unless the person chose the whole screen.
+    final safe = AppScope.of(context).prefs.laptopSafeArea;
+    final top = safe ? MediaQuery.paddingOf(context).top : 0.0;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Column(
         children: [
+          SizedBox(height: top),
           SizedBox(
-            height: hinge.top,
-            child: Stack(
-              children: [
-                Positioned.fill(child: _surface(showButtons: false)),
-                _floatingBar(),
-              ],
+            height: math.max(0, hinge.top - top),
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: safe,
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _surface(showButtons: false)),
+                  _floatingBar(),
+                ],
+              ),
             ),
           ),
           SizedBox(height: hinge.height),
@@ -576,6 +586,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
               color: cs.surfaceContainer,
               child: SafeArea(
                 top: false,
+                bottom: safe,
                 child: Column(
                   children: [
                     RemoteKeyboard(

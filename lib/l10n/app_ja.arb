@@ -240,5 +240,7 @@
   "domainOptional": "ドメイン（任意）",
   "sshKeyHint": "このスマートフォンのサインインキー（設定 › サインインキー）でサインインします。サーバーに公開鍵の登録が必要です。",
   "rememberSignIn": "サインイン情報を保存",
-  "paste": "貼り付け"
+  "paste": "貼り付け",
+  "laptopSafeArea": "システムバーを避ける",
+  "laptopSafeAreaHint": "ノート PC モードで、上のステータスバーと下のナビゲーションバーの分を空けます"
 }

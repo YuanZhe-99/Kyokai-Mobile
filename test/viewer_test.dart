@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   packetTests();
   laptopTests();
+  laptopSafeAreaTests();
   keyboardOnEntryTests();
   // An unfolded fold, a phone upright and on its side.
   for (final size in const [Size(1000, 760), Size(412, 915), Size(915, 412)]) {
@@ -209,6 +210,46 @@ void keyboardOnEntryTests() {
       }));
       expect(found != null, laptop);
       if (laptop) expect(found!.$1.top, 466);
+    });
+  }
+}
+
+void laptopSafeAreaTests() {
+  for (final safe in [true, false]) {
+    testWidgets('laptop mode ${safe ? 'keeps clear of' : 'covers'} the status bar', (t) async {
+      SharedPreferences.setMockInitialValues({'laptopMode': true, 'laptopSafeArea': safe});
+      final state = AppState(prefs: await Prefs.load(), engine: Engine());
+      final s = RemoteSession.forTest(state.sessions, '123456789')
+        ..state = 'connected'
+        ..granted = const ['view-screen', 'control-input']
+        ..pictureSize = const Size(2560, 1600)
+        ..texture = VideoTexture(7, 'c2.test.hevc.decoder', true);
+      t.view.physicalSize = const Size(704, 933);
+      t.view.devicePixelRatio = 1;
+      t.view.padding = const FakeViewPadding(top: 40, bottom: 24);
+      t.view.displayFeatures = [
+        const DisplayFeature(
+          bounds: Rect.fromLTWH(0, 370, 704, 0),
+          type: DisplayFeatureType.fold,
+          state: DisplayFeatureState.postureHalfOpened,
+        ),
+      ];
+      addTearDown(t.view.reset);
+      await t.pumpWidget(AppScope(
+        state: state,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ViewerPage(session: s),
+        ),
+      ));
+      await t.pump();
+      expect(t.takeException(), isNull);
+      final surface = find.byType(RemoteSurface);
+      expect(t.getTopLeft(surface).dy, safe ? 40 : 0);
+      expect(t.getSize(surface).height, safe ? 330 : 370);
+      await t.pumpWidget(const SizedBox());
+      state.sessions.dispose();
     });
   }
 }

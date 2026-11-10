@@ -58,6 +58,10 @@ class Prefs extends ChangeNotifier {
   bool get laptopMode => _p.getBool('laptopMode') ?? false;
   set laptopMode(bool v) => _set('laptopMode', v);
 
+  /// Laptop mode keeps clear of the status bar and the navigation bar.
+  bool get laptopSafeArea => _p.getBool('laptopSafeArea') ?? true;
+  set laptopSafeArea(bool v) => _set('laptopSafeArea', v);
+
   /// Pointer speed of the trackpad mode.
   double get pointerSpeed => _p.getDouble('pointerSpeed') ?? 1.6;
   set pointerSpeed(double v) => _set('pointerSpeed', v);

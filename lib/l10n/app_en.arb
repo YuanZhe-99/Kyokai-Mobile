@@ -250,5 +250,7 @@
   "domainOptional": "Domain (optional)",
   "sshKeyHint": "Signs in with this phone's sign-in keys (Settings › Sign-in keys); the server must list the public key.",
   "rememberSignIn": "Remember sign-in",
-  "paste": "Paste"
+  "paste": "Paste",
+  "laptopSafeArea": "Keep clear of system bars",
+  "laptopSafeAreaHint": "In laptop mode, leave room for the status bar at the top and the navigation bar at the bottom"
 }

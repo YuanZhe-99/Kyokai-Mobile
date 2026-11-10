@@ -240,5 +240,7 @@
   "domainOptional": "域（可选）",
   "sshKeyHint": "使用这台手机的登录密钥（设置 › 登录密钥）登录，服务器需要已添加对应公钥。",
   "rememberSignIn": "记住登录信息",
-  "paste": "粘贴"
+  "paste": "粘贴",
+  "laptopSafeArea": "避开系统栏",
+  "laptopSafeAreaHint": "笔记本模式下，为顶部状态栏和底部导航栏留出空间"
 }

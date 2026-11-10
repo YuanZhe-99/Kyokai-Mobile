@@ -20,13 +20,13 @@
 
 ## 还没有实现
 
-1. **SFTP 文件**：在 SSH 连接上浏览、上传、下载（桌面版 `internal/gui/sshfiles.go`），需要把非界面部分搬进客户端库，再做文件面板和 Android 的文件选择。
-2. **剪贴板图片和文件**：Kyokai 会话只互通文字。
-3. **从首页唤醒睡眠中的设备**（Wake），以及离线设备的唤醒入口。
-4. **多会话标签**：平板上同时开两个会话并切换（现在只能从"会话"页回到某个会话）；SSH/RDP/VNC 会话也还没列进"会话"页。
-5. **AI 任务历史**：只显示当前任务。
-6. **RDP 动态分辨率**（`SetDisplay`）和 H.264（Android 上没有 VideoToolbox，RDP 走 RemoteFX 等编码）。
-7. **登录密钥导入**：带口令的密钥、ECDSA 密钥。
-8. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、发布用 CI（GitHub Secrets 签名）、README 和用户文档。
-9. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上。
-10. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。
+. **NanoKVM USB**：桌面版能经被控端连着的 NanoKVM 操作另一台电脑（`doc/en-us/remote-services.md` 的 NanoKVM USB 一节，`internal/gui/nanokvm.go`），手机端还没有；需要看它走的是哪条通道（隧道还是会话里的 Raw 画面），再决定放进客户端库还是 core。
+1. **剪贴板图片和文件**：Kyokai 会话只互通文字。
+2. **从首页唤醒睡眠中的设备**（Wake），以及离线设备的唤醒入口。
+3. **多会话标签**：平板上同时开两个会话并切换（现在只能从"会话"页回到某个会话）；SSH/RDP/VNC 会话也还没列进"会话"页。
+4. **AI 任务历史**：只显示当前任务。
+5. **RDP 动态分辨率**（`SetDisplay`）和 H.264（Android 上没有 VideoToolbox，RDP 走 RemoteFX 等编码）。
+6. **登录密钥导入**：带口令的密钥、ECDSA 密钥。
+7. **M6 收尾**：TalkBack 标签和最小触控尺寸、首帧时间和耗电测量、发布用 CI（GitHub Secrets 签名）、README 和用户文档。
+8. **core 改动合回 Kyokai main**：现在在子模块的 `android` 分支上。
+9. 本机缺 clang，桌面目标的 `cargo check` 和 `go test`（cgo 部分）跑不了，靠 Kyokai 的 CI。

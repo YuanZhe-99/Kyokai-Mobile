@@ -240,5 +240,7 @@
   "domainOptional": "網域（選填）",
   "sshKeyHint": "使用這支手機的登入金鑰（設定 › 登入金鑰）登入，伺服器需要已加入對應公鑰。",
   "rememberSignIn": "記住登入資訊",
-  "paste": "貼上"
+  "paste": "貼上",
+  "laptopSafeArea": "避開系統列",
+  "laptopSafeAreaHint": "筆電模式下，為頂端狀態列和底部導覽列留出空間"
 }

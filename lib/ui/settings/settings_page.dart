@@ -174,6 +174,13 @@ class SettingsPage extends StatelessWidget {
                       value: prefs.laptopMode,
                       onChanged: (v) => prefs.laptopMode = v,
                     ),
+                    if (prefs.laptopMode)
+                      SwitchListTile(
+                        title: Text(l.laptopSafeArea),
+                        subtitle: Text(l.laptopSafeAreaHint),
+                        value: prefs.laptopSafeArea,
+                        onChanged: (v) => prefs.laptopSafeArea = v,
+                      ),
                   ],
                 ),
                 MyAppsSettingsSection(
