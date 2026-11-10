@@ -10,6 +10,8 @@ import '../../data/model.dart';
 import '../ai/ai_page.dart';
 import '../shell/app.dart';
 import 'device_widgets.dart';
+import '../services/service_open.dart';
+import '../../data/services.dart';
 import 'home_page.dart';
 
 class DeviceDetail extends StatelessWidget {
@@ -155,9 +157,7 @@ class _Body extends StatelessWidget {
               ActionChip(
                 avatar: Icon(icon, size: 18),
                 label: Text(label),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.notInThisBuild)));
-                },
+                onPressed: () => openService(context, host.deviceId, ServiceKind.values.byName(service), host.title),
                 side: services.contains(service) ? BorderSide(color: cs.primary) : null,
               ),
           ],

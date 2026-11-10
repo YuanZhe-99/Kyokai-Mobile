@@ -260,7 +260,11 @@ Future<void> showSessionMenu(
 
 /// Types text on the host as it is (pasted text, or a language the
 /// on-screen keyboard has no keys for).
-Future<void> typeText(BuildContext context, RemoteSession s) async {
+Future<void> typeText(BuildContext context, RemoteSession s) => typeTextInto(context, s.text);
+
+/// Asks for text and gives it to [send] (a Kyokai session, Remote Desktop,
+/// VNC).
+Future<void> typeTextInto(BuildContext context, void Function(String) send) async {
   final l = context.l;
   final c = TextEditingController();
   final text = await showDialog<String>(
@@ -280,5 +284,5 @@ Future<void> typeText(BuildContext context, RemoteSession s) async {
       ],
     ),
   );
-  if (text != null && text.isNotEmpty) s.text(text);
+  if (text != null && text.isNotEmpty) send(text);
 }
