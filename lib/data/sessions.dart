@@ -42,6 +42,9 @@ class Quality {
 }
 
 class Sessions extends ChangeNotifier with WidgetsBindingObserver {
+  /// Decoders opened from now on draw into a SurfaceView (Prefs.videoView).
+  bool videoView = true;
+
   Sessions(this.engine) {
     engine.addListener(_onStatus);
     WidgetsBinding.instance.addObserver(this);
@@ -150,6 +153,10 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
 
 class RemoteSession extends ChangeNotifier {
   RemoteSession._(this._owner, this.deviceId, this.kind, {this.address, this.route});
+
+  /// A session that dials nothing, for widget tests.
+  @visibleForTesting
+  RemoteSession.forTest(Sessions owner, String deviceId) : this._(owner, deviceId, SessionKind.desktop);
 
   final Sessions _owner;
   final String deviceId;
@@ -311,6 +318,10 @@ class RemoteSession extends ChangeNotifier {
   /// Sends a control message; -3 (behind) is dropped as the desktop does.
   int send(Json message) => _media?.send(message) ?? -2;
 
+  /// Takes one of the core's packets as if it came from the media reader.
+  @visibleForTesting
+  void packetForTest(Uint8List p) => _onPacket(p);
+
   void _onPacket(Uint8List p) {
     if (p.isEmpty) return;
     final kind = p[0];
@@ -392,7 +403,7 @@ class RemoteSession extends ChangeNotifier {
     if (codec == 'raw-rgba') return; // Drawn from the frames themselves.
     _opening = true;
     try {
-      final t = await Native.openVideo(codec, w, h);
+      final t = await Native.openVideo(codec, w, h, view: _owner.videoView);
       if (_videoStart == null || !identical(start, videoStart)) {
         if (t != null) await Native.closeVideo(t.id);
         return;

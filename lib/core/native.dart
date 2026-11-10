@@ -34,15 +34,17 @@ abstract final class Native {
           .map((e) => (e as Map).cast<String, Object?>())
           .toList();
 
-  /// Opens a decoder drawing into a new Flutter texture.
-  static Future<VideoTexture?> openVideo(String codec, int width, int height) async {
+  /// Opens a decoder drawing into a new Flutter texture, or with [view]
+  /// into the SurfaceView the page embeds for it.
+  static Future<VideoTexture?> openVideo(String codec, int width, int height, {bool view = false}) async {
     final r = await _m.invokeMapMethod<String, Object?>('videoOpen', {
       'codec': codec,
       'width': width,
       'height': height,
+      'view': view,
     });
     if (r == null) return null;
-    return VideoTexture((r['texture'] as num).toInt(), '${r['decoder']}', r['hardware'] == true);
+    return VideoTexture((r['texture'] as num).toInt(), '${r['decoder']}', r['hardware'] == true, view: r['view'] == true);
   }
 
   /// The decoder in use and its counts: fed, decoded, errors, last error.
@@ -83,8 +85,11 @@ abstract final class Native {
 }
 
 class VideoTexture {
-  VideoTexture(this.id, this.decoder, this.hardware);
+  VideoTexture(this.id, this.decoder, this.hardware, {this.view = false});
   final int id;
+
+  /// It draws into a SurfaceView (`kyokai/video-view`), not a texture.
+  final bool view;
   final String decoder;
   final bool hardware;
 }

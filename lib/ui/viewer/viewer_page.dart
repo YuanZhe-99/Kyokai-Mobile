@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
 import 'package:flutter/services.dart';
 
 import '../../core/native.dart';
@@ -176,7 +177,14 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
     final l = context.l;
     final cs = Theme.of(context).colorScheme;
     final t = s.texture;
-    if (t != null) return ColoredBox(color: Colors.black, child: Texture(textureId: t.id, filterQuality: FilterQuality.medium));
+    if (t != null) {
+      return ColoredBox(
+        color: Colors.black,
+        child: t.view
+            ? _VideoView(key: ValueKey(t.id), video: t.id)
+            : Texture(textureId: t.id, filterQuality: FilterQuality.medium),
+      );
+    }
     if (s.rawImage != null) return RawImage(image: s.rawImage, fit: BoxFit.fill);
     return ColoredBox(
       color: Colors.black,
@@ -654,3 +662,34 @@ class _DebugOverlayState extends State<_DebugOverlay> {
 
 /// The host's OS label for an About (empty = Linux).
 String osLabel(About a) => a.hostOs.label;
+
+/// The decoder's SurfaceView (MainActivity's `kyokai/video-view`), composed
+/// into the page; Flutter keeps the touches and draws over it.
+class _VideoView extends StatelessWidget {
+  const _VideoView({super.key, required this.video});
+  final int video;
+
+  static const _type = 'kyokai/video-view';
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: PlatformViewLink(
+      viewType: _type,
+      surfaceFactory: (context, controller) => AndroidViewSurface(
+        controller: controller as AndroidViewController,
+        gestureRecognizers: const {},
+        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+      ),
+      onCreatePlatformView: (params) =>
+          PlatformViewsService.initExpensiveAndroidView(
+              id: params.id,
+              viewType: _type,
+              layoutDirection: TextDirection.ltr,
+              creationParams: {'video': video},
+              creationParamsCodec: const StandardMessageCodec(),
+            )
+            ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+            ..create(),
+    ),
+  );
+}

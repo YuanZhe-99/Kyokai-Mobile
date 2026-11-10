@@ -213,5 +213,7 @@
   "othersInNetworks": "我的网络中的其他设备",
   "othersNone": "你的网络中没有其他在线的 Kyokai 设备。",
   "othersNote": "尚未连接过的 Kyokai 设备",
-  "othersTitle": "我的网络中的其他设备"
+  "othersTitle": "我的网络中的其他设备",
+  "videoView": "用 Android SurfaceView 显示视频",
+  "videoViewHint": "打开：解码器直接画到屏幕上。关闭：经过 Flutter 纹理。下次连接时生效。"
 }

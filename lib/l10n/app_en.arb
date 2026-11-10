@@ -223,5 +223,7 @@
   "othersInNetworks": "Others in my networks",
   "othersNone": "No other Kyokai device is online in your networks.",
   "othersNote": "Kyokai devices you haven't connected to",
-  "othersTitle": "Others in my networks"
+  "othersTitle": "Others in my networks",
+  "videoView": "Draw video with Android SurfaceView",
+  "videoViewHint": "On: the decoder draws straight to the screen. Off: through a Flutter texture. Applies to the next connection."
 }

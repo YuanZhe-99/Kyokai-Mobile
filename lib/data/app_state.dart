@@ -8,7 +8,10 @@ import 'prefs.dart';
 import 'sessions.dart';
 
 class AppState {
-  AppState({required this.prefs, required this.engine}) : sessions = Sessions(engine);
+  AppState({required this.prefs, required this.engine}) : sessions = Sessions(engine) {
+    sessions.videoView = prefs.videoView;
+    prefs.addListener(() => sessions.videoView = prefs.videoView);
+  }
 
   final Prefs prefs;
   final Engine engine;

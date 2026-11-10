@@ -27,6 +27,9 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _target = TextEditingController();
+  // The search field keeps itself and its keyboard when the layout changes.
+  final _searchKey = GlobalKey();
+  final _searchFocus = FocusNode();
   _Filter _filter = _Filter.all;
   String? _selected;
   bool _connecting = false;
@@ -34,6 +37,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _target.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -90,7 +94,7 @@ class _HomePageState extends State<HomePage> {
             // The screen's own height: the on-screen keyboard shrinks the box,
             // and a layout that changed with it would take the search field
             // (and the keyboard) away as soon as they appear.
-            final split = canSplitLayout(box.maxWidth, box.maxHeight + MediaQuery.viewInsetsOf(context).bottom);
+            final split = canSplitLayout(box.maxWidth, box.maxHeight + MediaQueryData.fromView(View.of(context)).viewInsets.bottom);
             final selected = split ? (_selected ?? shown.firstOrNull?.deviceId) : null;
             final list = _list(context, status, shown, split ? selected : null);
             if (!split) return Scaffold(body: list);
@@ -136,6 +140,8 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 12),
                 SearchBar(
+                  key: _searchKey,
+                  focusNode: _searchFocus,
                   controller: _target,
                   hintText: l.connectHint,
                   leading: const Icon(Icons.search),

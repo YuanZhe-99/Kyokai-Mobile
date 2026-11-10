@@ -24,6 +24,8 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         events = MethodChannel(messenger, "kyokai/events")
+        flutterEngine.platformViewsController.registry
+            .registerViewFactory("kyokai/video-view", VideoViewFactory(videos))
         MethodChannel(messenger, "kyokai/native").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
@@ -35,6 +37,7 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("codec")!!,
                             call.argument<Int>("width")!!,
                             call.argument<Int>("height")!!,
+                            call.argument<Boolean>("view") == true,
                             { id -> runOnUiThread { events.invokeMethod("keyFrame", id) } },
                             { text -> runOnUiThread { events.invokeMethod("log", text) } },
                         )
@@ -43,7 +46,7 @@ class MainActivity : FlutterActivity() {
                         } else {
                             videos[video.id] = video
                             result.success(
-                                mapOf("texture" to video.id, "decoder" to video.name, "hardware" to video.hardware)
+                                mapOf("texture" to video.id, "decoder" to video.name, "hardware" to video.hardware, "view" to (call.argument<Boolean>("view") == true))
                             )
                         }
                     }

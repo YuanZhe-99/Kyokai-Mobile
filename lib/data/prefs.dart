@@ -40,6 +40,11 @@ class Prefs extends ChangeNotifier {
   PointerMode get pointerMode => PointerMode.values.byName(_p.getString('pointer') ?? 'trackpad');
   set pointerMode(PointerMode v) => _set('pointer', v.name);
 
+  /// Video drawn by an Android SurfaceView in the page (the default), not
+  /// through a Flutter texture.
+  bool get videoView => _p.getBool('videoView') ?? true;
+  set videoView(bool v) => _set('videoView', v);
+
   /// The debug overlay over the remote screen (decoder, fps, latency).
   bool get overlay => _p.getBool('overlay') ?? false;
   set overlay(bool v) => _set('overlay', v);

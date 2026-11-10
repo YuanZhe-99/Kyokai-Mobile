@@ -213,5 +213,7 @@
   "othersInNetworks": "ネットワーク内のほかのデバイス",
   "othersNone": "ネットワーク内にオンラインのほかの Kyokai デバイスはありません。",
   "othersNote": "まだ接続したことのない Kyokai デバイス",
-  "othersTitle": "ネットワーク内のほかのデバイス"
+  "othersTitle": "ネットワーク内のほかのデバイス",
+  "videoView": "Android SurfaceView で映像を表示",
+  "videoViewHint": "オン：デコーダーが画面に直接描画します。オフ：Flutter のテクスチャを経由します。次の接続から有効です。"
 }

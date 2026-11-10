@@ -1,0 +1,114 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:kyokai_mobile/core/native.dart';
+import 'package:kyokai_mobile/data/app_state.dart';
+import 'package:kyokai_mobile/data/engine.dart';
+import 'package:kyokai_mobile/data/prefs.dart';
+import 'package:kyokai_mobile/data/sessions.dart';
+import 'package:kyokai_mobile/l10n/gen/app_localizations.dart';
+import 'package:kyokai_mobile/ui/viewer/viewer_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  packetTests();
+  // An unfolded fold, a phone upright and on its side.
+  for (final size in const [Size(1000, 760), Size(412, 915), Size(915, 412)]) {
+    testWidgets('a connected session shows its picture at $size', (t) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await Prefs.load();
+      final state = AppState(prefs: prefs, engine: Engine());
+      final s = RemoteSession.forTest(state.sessions, '123456789')
+        ..state = 'connected'
+        ..granted = const ['view-screen', 'control-input']
+        ..videoStart = const {'codec': 'hevc', 'width': 2560, 'height': 1600}
+        ..pictureSize = const Size(2560, 1600)
+        ..texture = VideoTexture(7, 'c2.test.hevc.decoder', true);
+      t.view.physicalSize = size;
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(AppScope(
+        state: state,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ViewerPage(session: s),
+        ),
+      ));
+      await t.pump();
+      expect(t.takeException(), isNull);
+      final texture = find.byType(Texture);
+      expect(texture, findsOneWidget);
+      final box = t.getSize(texture);
+      expect(box.width, greaterThan(100), reason: 'the picture is laid out at $box');
+      expect(box.height, greaterThan(100), reason: 'the picture is laid out at $box');
+      await t.pumpWidget(const SizedBox());
+      state.sessions.dispose();
+    });
+  }
+}
+
+Uint8List _packet(int kind, Object body) => Uint8List.fromList([
+  kind,
+  ...(body is List<int> ? body : utf8.encode(jsonEncode(body))),
+]);
+
+void packetTests() {
+  testWidgets('packets from a live session reach the picture (fold)', (t) async {
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(const MethodChannel('kyokai/native'), (call) async {
+      calls.add(call.method);
+      if (call.method == 'videoOpen') {
+        return {'texture': 7, 'decoder': 'c2.test.hevc', 'hardware': true, 'view': (call.arguments as Map)['view']};
+      }
+      return null;
+    });
+    var fed = 0;
+    messenger.setMockMessageHandler('kyokai/video', (m) async {
+      fed++;
+      return ByteData(1);
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(const MethodChannel('kyokai/native'), null);
+      messenger.setMockMessageHandler('kyokai/video', null);
+    });
+    SharedPreferences.setMockInitialValues({'overlay': true});
+    final prefs = await Prefs.load();
+    final state = AppState(prefs: prefs, engine: Engine());
+    final s = RemoteSession.forTest(state.sessions, '123456789')
+      ..state = 'connected'
+      ..granted = const ['view-screen', 'control-input'];
+    t.view.physicalSize = const Size(1000, 760);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(AppScope(
+      state: state,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ViewerPage(session: s),
+      ),
+    ));
+    s.packetForTest(_packet(1, {'codec': 'hevc', 'width': 2560, 'height': 1600, 'encoder': 'mf', 'hardware': true}));
+    await t.pump();
+    await t.pump();
+    s.packetForTest(_packet(7, {'x': 0.5, 'y': 0.5, 'visible': true}));
+    s.packetForTest(_packet(4, {'delay_ms': 93, 'fps': 30, 'frames': 2, 'bitrate': 1000000, 'encode_ms': 4}));
+    final frame = Uint8List(9 + 16)..[0] = 1;
+    frame.setAll(9, [0, 0, 0, 1, 0x40, 1, 0, 0, 0, 1, 0x26, 1, 0xAF, 0, 0, 0]);
+    s.packetForTest(Uint8List.fromList([2, ...frame]));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(t.takeException(), isNull);
+    expect(calls, contains('videoOpen'));
+    expect(s.texture?.id, 7);
+    expect(fed, 1);
+    // The default: the decoder's own SurfaceView, embedded.
+    expect(find.byType(PlatformViewLink), findsOneWidget);
+    expect(t.getSize(find.byType(PlatformViewLink)).width, greaterThan(100));
+    await t.pumpWidget(const SizedBox());
+    state.sessions.dispose();
+  });
+}

@@ -13,7 +13,10 @@ import java.util.concurrent.TimeUnit
 /**
  * One remote screen's decoder: H.264 or HEVC in Annex B, as Kyokai hosts
  * send it (core annexb.rs), with the parameter sets in every key frame,
- * decoded by MediaCodec straight into a Flutter texture.
+ * decoded by MediaCodec straight into the screen: a Flutter texture (a
+ * SurfaceProducer) or an Android SurfaceView the page embeds ([VideoView]),
+ * which the app uses by default as it needs no copy through Flutter's
+ * renderer.
  *
  * One thread owns the codec: it takes frames from a queue, feeds the codec
  * and renders its output, so no codec call ever runs inside a codec
@@ -21,7 +24,8 @@ import java.util.concurrent.TimeUnit
  * parameter sets flagged as codec config, then the picture.
  */
 class Video private constructor(
-    private val producer: TextureRegistry.SurfaceProducer,
+    val id: Long,
+    private val producer: TextureRegistry.SurfaceProducer?,
     private val mime: String,
     private val candidates: List<String>,
     private val width: Int,
@@ -29,8 +33,6 @@ class Video private constructor(
     private val wantKey: (Long) -> Unit,
     private val log: (String) -> Unit,
 ) {
-    val id: Long = producer.id()
-
     /** The decoder in use: the first of [candidates] that works. */
     @Volatile private var current = 0
     val name: String get() = candidates[current]
@@ -55,7 +57,16 @@ class Video private constructor(
 
     private val queue = LinkedBlockingDeque<Frame>()
     @Volatile private var running = true
-    @Volatile private var surfaceReady = true
+    @Volatile private var surfaceReady = producer != null
+
+    /** The SurfaceView's surface while it exists (no [producer]). */
+    @Volatile private var viewSurface: android.view.Surface? = null
+
+    /** Counted down once the decoder let go of a surface that is going. */
+    @Volatile private var pendingRelease: java.util.concurrent.CountDownLatch? = null
+
+    /** Where the decoder draws now. */
+    private fun target(): android.view.Surface? = producer?.surface ?: viewSurface
     @Volatile private var restart = false
 
     /** A key frame is needed before anything decodes (start, error, overflow). */
@@ -64,8 +75,8 @@ class Video private constructor(
     private val thread = Thread({ loop() }, "kyokai-video-$id")
 
     init {
-        producer.setSize(width, height)
-        producer.setCallback(object : TextureRegistry.SurfaceProducer.Callback {
+        producer?.setSize(width, height)
+        producer?.setCallback(object : TextureRegistry.SurfaceProducer.Callback {
             override fun onSurfaceAvailable() {
                 surfaceReady = true
                 restart = true
@@ -78,6 +89,23 @@ class Video private constructor(
             }
         })
         thread.start()
+    }
+
+    /**
+     * Gives the decoder the SurfaceView's surface, or takes it away (null)
+     * when the view goes; it starts again from a key frame on the next.
+     */
+    fun attach(surface: android.view.Surface?) {
+        val released = if (surface == null) java.util.concurrent.CountDownLatch(1) else null
+        pendingRelease = released
+        viewSurface = surface
+        surfaceReady = surface != null
+        restart = true
+        // The view's surface is destroyed when this returns: let the decoder
+        // stop drawing into it first.
+        released?.await(500, TimeUnit.MILLISECONDS)
+        log("video $id: view surface ${if (surface == null) "gone" else "ready"}")
+        if (surface != null) wantKey(id)
     }
 
     /**
@@ -130,16 +158,19 @@ class Video private constructor(
                     restart = false
                     codec?.let { stopQuietly(it) }
                     codec = null
+                    pendingRelease?.countDown()
+                    pendingRelease = null
                     configured = false
                     needKey = true
-                    if (surfaceReady) {
+                    val surface = target()
+                    if (surfaceReady && surface != null) {
                         codec = MediaCodec.createByCodecName(name).also {
                             val format = MediaFormat.createVideoFormat(mime, width, height)
                             // Room for a key frame with its parameter sets at a high bitrate.
                             format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxOf(width * height * 3 / 2, 4 shl 20))
                             if (Build.VERSION.SDK_INT >= 30) format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                             format.setInteger(MediaFormat.KEY_PRIORITY, 0)
-                            it.configure(format, producer.surface, null, 0)
+                            it.configure(format, surface, null, 0)
                             it.start()
                         }
                         log("video $id: $name started for ${width}x$height")
@@ -220,12 +251,15 @@ class Video private constructor(
         running = false
         thread.interrupt()
         try { thread.join(500) } catch (_: InterruptedException) {}
-        producer.release()
+        producer?.release()
     }
 
     companion object {
         private const val MIME_H264 = MediaFormat.MIMETYPE_VIDEO_AVC
         private const val MIME_HEVC = MediaFormat.MIMETYPE_VIDEO_HEVC
+
+        /** Ids of decoders that draw into a SurfaceView, apart from texture ids. */
+        private var nextViewId = 1L shl 40
 
         private fun stopQuietly(c: MediaCodec) {
             try { c.stop() } catch (_: Exception) {}
@@ -320,6 +354,7 @@ class Video private constructor(
             codec: String,
             width: Int,
             height: Int,
+            view: Boolean,
             wantKey: (Long) -> Unit,
             log: (String) -> Unit,
         ): Video? {
@@ -336,8 +371,9 @@ class Video private constructor(
             }
             if (names.isEmpty()) return null
             log("video: $codec ${width}x$height decoders $names")
+            if (view) return Video(nextViewId++, null, mime, names, width, height, wantKey, log)
             val producer = renderer.createSurfaceProducer()
-            return Video(producer, mime, names, width, height, wantKey, log)
+            return Video(producer.id(), producer, mime, names, width, height, wantKey, log)
         }
     }
 }
