@@ -11,17 +11,20 @@ talks to any Kyokai host of a compatible version.
 ## What it does
 
 - **Desktops**: the host's screen in H.264 or HEVC, decoded in hardware;
-  touch, an on-screen touchpad, a full keyboard with modifier keys, a
-  hardware keyboard and mouse; sound; several displays; quality and size
-  choices; session actions (lock, Ctrl+Alt+Del, block input, privacy
-  screen, wake the screen).
+  touch, an on-screen touchpad, a full keyboard with modifier keys (its
+  Shift and Mac Option layers shown on the keys, the host's layout picked
+  by hand when detection is wrong), a hardware keyboard and mouse; sound;
+  several displays; quality and size choices; session actions (lock,
+  Ctrl+Alt+Del, block input, privacy screen, wake the screen).
 - **Foldables**: two panes when unfolded, and a laptop mode at a half-folded
   hinge (the screen above, keyboard and touchpad below).
-- **Clipboard**: text and images both ways, and a history of what crossed.
+- **Clipboard**: text and images both ways; files and folders the host
+  copies, to save or share from the phone; a history of what crossed.
 - **The host's AI**: start tasks, reply, approve or decline its actions,
-  and see the tasks it showed while you were connected.
+  and look back at the tasks it showed, kept across restarts.
 - **SSH, Remote Desktop and VNC** of the host itself, through Kyokai
-  tunnels; **SFTP** files over SSH, with upload and download.
+  tunnels; **SFTP** files over SSH, with upload and download; Remote
+  Desktop in H.264 where the phone decodes it, and resized to the window.
 - **NanoKVM USB**: the computer wired to a host's NanoKVM.
 - **Wake**: turns a host's screen back on, from the device list too.
 - **Networks**: up to eight EasyTier networks, direct paths, routes by
@@ -30,6 +33,9 @@ talks to any Kyokai host of a compatible version.
 The phone's version and the Kyokai Core version it carries are in
 Settings → About.
 
+Not yet: sending files from the phone to a host. What is done and what has
+been tried on a device: [doc/dev/progress.md](doc/dev/progress.md).
+
 ## Install
 
 Download `Kyokai-Android-<version>-arm64.apk` from
@@ -37,7 +43,8 @@ Download `Kyokai-Android-<version>-arm64.apk` from
 against its `.sha256`. Android 8.0 or later, 64-bit ARM.
 
 How to use it: [doc/user-guide.md](doc/user-guide.md)
-([中文](doc/user-guide.zh.md)).
+([中文](doc/user-guide.zh.md)). Testing a build on a device:
+[doc/test-checklist.md](doc/test-checklist.md).
 
 ## Build
 
@@ -57,8 +64,9 @@ else with the debug key. CI (`.github/workflows/ci.yml`) runs the checks
 and tests on every push, builds the APK, and publishes a release for a
 `v*` tag that matches `pubspec.yaml`.
 
-Developer notes: `doc/dev/` (the core's control, media and services APIs,
-and `progress.md`).
+Developer notes: `doc/dev/` — `api-control.md`, `api-media.md` and
+`api-services.md` (the core's and the clients library's calls and
+packets) and `progress.md` (status).
 
 ## License
 

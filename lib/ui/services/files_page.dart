@@ -9,12 +9,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../core/clients.dart';
 import '../../data/services.dart';
 import '../../l10n/gen/app_localizations.dart';
 import '../shell/app.dart';
+import '../shell/save_share.dart';
 import 'service_open.dart';
 
 /// A file the phone picked: where its copy is, and its name.
@@ -25,7 +25,7 @@ class FilesPage extends StatefulWidget {
     super.key,
     required this.session,
     this.pickFiles = _pickFiles,
-    this.saveFile = _saveFile,
+    this.saveFile = saveFileAs,
     this.shareFile = _shareFile,
     this.downloads = _downloads,
   });
@@ -56,16 +56,7 @@ Future<List<PickedFile>> _pickFiles() async {
   ];
 }
 
-/// The largest file the system's save dialog takes here: it is handed the
-/// bytes whole.
-const _saveLimit = 256 << 20;
-
-Future<bool> _saveFile(String path, String name) async {
-  final bytes = await File(path).readAsBytes();
-  return await FilePicker.platform.saveFile(fileName: name, bytes: bytes) != null;
-}
-
-Future<void> _shareFile(String path) => Share.shareXFiles([XFile(path)]);
+Future<void> _shareFile(String path) => shareFiles([path]);
 
 Future<String> _downloads() async => '${(await getTemporaryDirectory()).path}/downloads';
 
@@ -189,7 +180,7 @@ class _FilesPageState extends State<FilesPage> {
   Future<void> _save(FileTransfer t) => _try(() async {
     final l = context.l;
     final messenger = ScaffoldMessenger.of(context);
-    if (await File(t.local).length() > _saveLimit) {
+    if (await File(t.local).length() > saveLimit) {
       messenger.showSnackBar(SnackBar(content: Text(l.filesTooBigToSave)));
       return;
     }

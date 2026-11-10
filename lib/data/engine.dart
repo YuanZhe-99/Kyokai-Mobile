@@ -26,6 +26,10 @@ class Engine extends ChangeNotifier {
   Map<String, Object?> device = const {};
   String stateDir = '';
 
+  /// The app's cache folder: the core receives clipboard files under it,
+  /// and the ones kept go to its `received`.
+  String cacheDir = '';
+
   Timer? _tick;
   bool _busy = false;
   int _ticks = 0;
@@ -41,6 +45,10 @@ class Engine extends ChangeNotifier {
       device = await Native.device();
       final base = await getApplicationSupportDirectory();
       stateDir = '${base.path}/kyokai';
+      cacheDir = (await getTemporaryDirectory()).path;
+      // Clipboard files kept from an earlier run: their history is gone.
+      final received = Directory('$cacheDir/received');
+      if (await received.exists()) await received.delete(recursive: true);
       await Directory(stateDir).create(recursive: true);
       final key = await Native.masterKey();
       if (key == null) Log.error('engine', 'the Android Keystore cannot keep the secrets key: memory only');
@@ -51,6 +59,7 @@ class Engine extends ChangeNotifier {
           'state_dir': stateDir,
           'profile': '',
           'master_key': ?key,
+          'cache_dir': cacheDir,
         });
       } on core.CoreError catch (e) {
         if (!e.message.contains('already started')) rethrow;

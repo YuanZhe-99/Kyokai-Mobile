@@ -1,6 +1,6 @@
 // The host's AI tasks seen from this phone: a host sends only its latest,
-// so each one shown while a link was open is kept (Sessions.aiHistory) and
-// listed here, newest first.
+// so each one shown while a link was open is kept (Sessions.aiHistory, also
+// across restarts) and listed here, newest first.
 
 import 'package:flutter/material.dart';
 
@@ -40,8 +40,18 @@ class AiHistoryList extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: Text(l.aiHistory, style: Theme.of(context).textTheme.titleMedium),
+              padding: const EdgeInsets.fromLTRB(8, 0, 0, 8),
+              child: Row(
+                children: [
+                  Expanded(child: Text(l.aiHistory, style: Theme.of(context).textTheme.titleMedium)),
+                  if (tasks.isNotEmpty)
+                    IconButton(
+                      tooltip: l.clipHistoryClear,
+                      onPressed: () => sessions.clearAiHistory(deviceId),
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                    ),
+                ],
+              ),
             ),
             if (tasks.isEmpty)
               Padding(

@@ -2,6 +2,7 @@
 // switching between open pictures (0.1.1).
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -94,6 +95,50 @@ void main() {
     state.sessions.dispose();
   });
 
+  testWidgets('the host\'s files are moved out of the inbox and offered to save or share', (t) async {
+    final state = await _state();
+    final tmp = Directory.systemTemp.createTempSync('kyokai');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    state.engine.cacheDir = tmp.path;
+    final inbox = Directory('${tmp.path}/Kyokai/ab/1')..createSync(recursive: true);
+    File('${inbox.path}/a.txt').writeAsStringSync('hello');
+    Directory('${inbox.path}/photos').createSync();
+    File('${inbox.path}/photos/b.jpg').writeAsStringSync('b');
+    final s = RemoteSession.forTest(state.sessions, '123456789');
+    await t.runAsync(() async {
+      s.packetForTest(_packet(core.Packet.clipboard, {
+        'from': 'host',
+        'at': 5000,
+        'files': [
+          {'path': 'a.txt', 'size': 5},
+          {'path': 'photos', 'dir': true},
+          {'path': 'photos/b.jpg', 'size': 1},
+        ],
+        'paths': ['${inbox.path}/a.txt', '${inbox.path}/photos'],
+      }));
+      for (var i = 0; i < 50 && state.sessions.clipHistory.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    final e = state.sessions.clipHistory.single;
+    expect(e.files, 3);
+    expect(e.kept.map((p) => p.split('/').last), ['a.txt', 'photos']);
+    expect(e.kept.every((p) => p.startsWith('${tmp.path}/received/')), isTrue);
+    expect(File(e.kept.first).readAsStringSync(), 'hello');
+    expect(File('${inbox.path}/a.txt').existsSync(), isFalse);
+
+    await t.pumpWidget(_app(state, const ClipHistoryPage()));
+    await t.pump();
+    expect(find.text('a.txt, photos'), findsOneWidget);
+    expect(find.byIcon(Icons.share), findsOneWidget);
+    await t.tap(find.text('a.txt, photos'));
+    await t.pumpAndSettle();
+    expect(find.byIcon(Icons.save_alt), findsOneWidget); // the file; the folder is only shared
+    expect(find.byIcon(Icons.share), findsNWidgets(3));
+    await t.pumpWidget(const SizedBox());
+    state.sessions.dispose();
+  });
+
   testWidgets('a host\'s tasks are kept by id, newest first', (t) async {
     final state = await _state();
     final s = RemoteSession.forTest(state.sessions, '123456789');
@@ -112,6 +157,24 @@ void main() {
     expect(find.text('all done'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     state.sessions.dispose();
+  });
+
+  testWidgets('the tasks are kept across restarts, without their steps, until cleared', (t) async {
+    final state = await _state();
+    final s = RemoteSession.forTest(state.sessions, '123456789');
+    s.packetForTest(_packet(core.Packet.aiTask, {'id': 7, 'instruction': 'kept', 'state': 'done', 'updated': 5, 'steps': [1, 2]}));
+    await t.pump(const Duration(seconds: 2));
+    state.sessions.dispose();
+
+    final again = Sessions(Engine(), store: state.prefs);
+    final tasks = again.aiHistory('123456789');
+    expect(tasks.single['instruction'], 'kept');
+    expect(tasks.single.containsKey('steps'), isFalse);
+    again.clearAiHistory('123456789');
+    again.dispose();
+    final third = Sessions(Engine(), store: state.prefs);
+    expect(third.aiHistory('123456789'), isEmpty);
+    third.dispose();
   });
 
   testWidgets('the session menu offers the clipboard history and the other open picture', (t) async {

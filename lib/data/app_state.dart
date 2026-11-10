@@ -9,7 +9,7 @@ import 'services.dart';
 import 'sessions.dart';
 
 class AppState {
-  AppState({required this.prefs, required this.engine}) : sessions = Sessions(engine) {
+  AppState({required this.prefs, required this.engine}) : sessions = Sessions(engine, store: prefs) {
     sessions.videoView = prefs.videoView;
     prefs.addListener(() => sessions.videoView = prefs.videoView);
     services.addListener(() => sessions.serviceTitles = services.liveTitles);

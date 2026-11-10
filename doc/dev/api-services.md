@@ -98,7 +98,9 @@ Methods per service (`internal/gui/servicetab.go:79-151`): SSH `key|password`; V
 - Input: `SendPointer(x, y, buttons)` (px; 1 left, 2 middle, 4 right), `SendScroll(x, y, dx, dy)`
   (px; desktop: 20 px per notch), `SendScancode(code uint8, extended, down)` (set 1),
   `SendKey(keysym, down)`, `SendText`, `SetClipboard(text)`, `SetDisplay(w, h, scale)` when `Info().Resize`.
-- No H.264 on Android (VideoToolbox only); RemoteFX/ClearCodec/planar carry the picture.
+- H.264 (AVC420/444) on Android through `codec/h264/mediacodec.go` (the NDK's AMediaCodec into an
+  AImageReader, copied out as NV12); offered only when the device has an H.264 decoder
+  (`h264.Available`). Otherwise RemoteFX/ClearCodec/planar carry the picture.
 
 ### `internal/rfb` (VNC, GPL)
 - `rfb.Dial(ctx, Options, Handler)` then `go c.Run()`; `Close()`.

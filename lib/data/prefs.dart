@@ -97,6 +97,11 @@ class Prefs extends ChangeNotifier {
   String? keyboardOs(String key) => _p.getString('keyboardOs.$key');
   void setKeyboardOs(String key, String? os) => _set('keyboardOs.$key', os);
 
+  /// The hosts' AI tasks seen from this phone, as JSON (Sessions keeps
+  /// them); no listeners are told, nothing on screen follows it.
+  String? get aiTasks => _p.getString('aiTasks');
+  set aiTasks(String? v) => v == null ? _p.remove('aiTasks') : _p.setString('aiTasks', v);
+
   bool get sound => _p.getBool('sound') ?? true;
   set sound(bool v) => _set('sound', v);
 

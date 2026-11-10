@@ -1,4 +1,4 @@
-# Kyokai controller media API: reference for the Android client
+| 13 | CLIPBOARD | JSON `{from, at, text}`, `{from, at, png}`, `{from, at, files}` or, received, `{from, at, files, paths}` |# Kyokai controller media API: reference for the Android client
 
 Paths are relative to `third_party/kyokai/` unless they start with `android/` (the Kyokai-Mobile app).
 `core/` means `core/kyokai-core/src/`. Line numbers are from the working tree on 2026-11-09. In that tree the core has uncommitted edits, and `core/android/` is untracked.
@@ -166,7 +166,7 @@ There is no timestamp and no length prefix. **On Android the core has no Opus de
 
 ### 2.7 CLIPBOARD (history only)
 
-- `{"from":"controller"|"host","at":unix_ms,"text":...}`, or `"png":base64` (8-bit RGBA PNG), or `"files":[{...}]` (`core/session.rs:1141-1169`).
+- `{"from":"controller"|"host","at":unix_ms,"text":...}`, or `"png":base64` (8-bit RGBA PNG), or `"files":[{...}]` (`core/session.rs:1141-1169`). Files the host copied, once received whole, come with `"paths":[...]`: the copied items (files or folders) on this phone, in the session's inbox under `cache_dir` — move them out before the session ends (the app moves them to `<cache>/received/`).
 - A packet with `from:"host"` is pushed only when clipboard sharing is permitted and `clipboard-use` is `share:true, front:true` (`core/session.rs:4804-4837`).
 - Text is limited to `MAX_TEXT = 1 MiB` (`core/clipboard.rs:18`).
 

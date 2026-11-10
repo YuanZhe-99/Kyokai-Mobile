@@ -43,7 +43,8 @@ Blocking calls (call them off the UI isolate): `session.identify` (dials, second
   "state_dir": "/data/user/0/<pkg>/files/kyokai",   // path, REQUIRED. Created if missing (lib.rs:832)
   "profile":   "",                   // string, optional (default ""). Desktop: keys the OS credential entry. Android: unused by the store
   "agent":     null,                 // path, optional. Privileged-helper only — NEVER set on Android
-  "master_key": "<base64 of 32 bytes>" // Android only (#[cfg(target_os="android")]), optional
+  "master_key": "<base64 of 32 bytes>", // Android only (#[cfg(target_os="android")]), optional
+  "cache_dir": "/data/user/0/<pkg>/cache" // Android only, optional: where clipboard files from hosts are received
 }
 ```
 
@@ -66,9 +67,13 @@ What the engine passes (`internal/engine/engine.go:110`): `{"version", "state_di
     rebuild via `rebuild_on_store` → `store::open` directly (`lib.rs:946-973`), after the key was
     already taken → the rebuilt store is **memory-only**. Restart the core (`kyokai_stop` +
     `kyokai_start`) instead of relying on those on Android.
-- `android.clipboard` `{"text": string}` → `null`: what the person copied on the phone, offered to
-  hosts by sessions with `clipboard` (`lib.rs:1553-1557`, `android/mod.rs:41-46`). Text only;
-  host→phone text arrives only as media packet 13 (the core does not write the phone clipboard;
+- `cache_dir`: an absolute folder (a relative one is ignored, `android/mod.rs` `set_cache_dir`). Received
+  clipboard files go to `<cache_dir>/Kyokai/<random>/<n>/`, deleted when the session ends
+  (`files.rs` `base_dir`, `Inbox`). Without it no files are received.
+- `android.clipboard` `{"text": string}` or `{"png": base64}` → `null`: what the person copied on the
+  phone (text, or an image as PNG), offered to hosts by sessions with `clipboard` (`lib.rs`
+  `"android.clipboard"`, `android/mod.rs` `put_clipboard`, `put_clipboard_png`). Host→phone text,
+  images and files arrive only as media packet 13 (the core does not write the phone clipboard;
   `android/mod.rs:60-86`).
 - `android.decoders` `{"decode": ["h264","hevc","vp9","av1","vp8"]}` → `null`: codecs the app
   decodes with MediaCodec; used from the next session on (`lib.rs:1561-1566`,
@@ -318,8 +323,9 @@ Kinds — there is no `kind` field. What you get is chosen by `want` / `nanokvm`
 
 Permission names (`access.rs:17-42`, kebab-case): `view-screen, control-input, run-ai-task,
 approve-ai-action, clipboard, files, hear-sound, see-status, use-ssh, use-rdp, use-vnc, use-nanokvm`.
-None implies another. (`files` = files through the clipboard; Android's clipboard handles text
-only, `android/mod.rs:74-85`, so asking for `files` brings nothing on Android.)
+None implies another. (`files` = files through the clipboard. On Android only host→phone: the core writes them under
+`cache_dir` and media packet 13 brings their `paths`; the phone offers none, its clipboard holds
+content URIs, not paths.)
 
 Synchronous errors (`ok:false`): `"bad connect request: …"`, `"a Device ID has 9 digits"`,
 `"that is this device's own ID"`, `"the core is not started"`, `"not connected to a network"`

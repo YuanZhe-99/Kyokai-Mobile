@@ -6,6 +6,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -16,9 +17,10 @@ import '../core/native.dart';
 import 'engine.dart';
 import 'log.dart';
 import 'model.dart';
+import 'prefs.dart';
 
 /// What a desktop session asks for (the desktop GUI's `desktopWant`).
-const desktopWant = ['view-screen', 'control-input', 'clipboard', 'hear-sound'];
+const desktopWant = ['view-screen', 'control-input', 'clipboard', 'files', 'hear-sound'];
 
 /// What an AI link asks for: no picture, the host's AI.
 const aiWant = ['run-ai-task', 'approve-ai-action'];
@@ -35,17 +37,29 @@ const wakeWant = ['control-input'];
 enum SessionKind { desktop, ai, nanokvm, wake }
 
 /// Something that crossed a session's clipboard (media CLIPBOARD), for the
-/// history: text, or an image as PNG.
+/// history: text, an image as PNG, or files.
 class ClipEntry {
-  ClipEntry({required this.deviceId, required this.fromHost, required this.at, this.text, this.png, this.files = 0});
+  ClipEntry({
+    required this.deviceId,
+    required this.fromHost,
+    required this.at,
+    this.text,
+    this.png,
+    this.files = 0,
+    this.kept = const [],
+  });
   final String deviceId;
   final bool fromHost;
   final DateTime at;
   final String? text;
   final Uint8List? png;
 
-  /// Files offered through the clipboard: only counted, Android takes none.
+  /// How many files and folders crossed.
   final int files;
+
+  /// The host's files as received, kept on this phone for this run of the
+  /// app (Engine.cacheDir's `received`): the copied items, files or folders.
+  final List<String> kept;
 }
 
 /// The viewer's picture settings (`quality`, `codec`).
@@ -68,7 +82,8 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   /// Decoders opened from now on draw into a SurfaceView (Prefs.videoView).
   bool videoView = true;
 
-  Sessions(this.engine) {
+  Sessions(this.engine, {this.store}) {
+    _loadAiTasks();
     engine.addListener(_onStatus);
     WidgetsBinding.instance.addObserver(this);
     Native.keyFrames.stream.listen((texture) {
@@ -80,6 +95,9 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   final Engine engine;
+
+  /// Where the AI task history is kept between runs; none in some tests.
+  final Prefs? store;
   final List<RemoteSession> open = [];
   Timer? _clipTimer;
   String? _lastClip;
@@ -120,7 +138,9 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   // ---- The hosts' AI tasks --------------------------------------------------
 
   /// Every task each host showed while a link was open, by device and task
-  /// id: hosts send only their latest, so the history is kept here.
+  /// id: hosts send only their latest, so the history is kept here, and in
+  /// [store] across runs (the newest [aiHistoryMax] a host, without their
+  /// steps).
   final Map<String, Map<int, Json>> _aiTasks = {};
 
   /// A host's tasks seen so far, newest first.
@@ -130,10 +150,51 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
     return tasks;
   }
 
+  static const aiHistoryMax = 100;
+  Timer? _aiSave;
+
   void _seenAiTask(String deviceId, Json task) {
     final id = (task['id'] as num?)?.toInt();
     if (id == null) return;
-    (_aiTasks[deviceId] ??= {})[id] = task;
+    final tasks = _aiTasks[deviceId] ??= {};
+    tasks[id] = Map.of(task)..remove('steps');
+    if (tasks.length > aiHistoryMax) {
+      final oldest = aiHistory(deviceId).skip(aiHistoryMax).map((t) => (t['id'] as num).toInt()).toList();
+      oldest.forEach(tasks.remove);
+    }
+    // A running task updates often: written a moment after the last.
+    _aiSave?.cancel();
+    _aiSave = Timer(const Duration(seconds: 1), _saveAiTasks);
+  }
+
+  void _saveAiTasks() {
+    _aiSave?.cancel();
+    _aiSave = null;
+    store?.aiTasks = jsonEncode({
+      for (final e in _aiTasks.entries) e.key: e.value.values.toList(),
+    });
+  }
+
+  void _loadAiTasks() {
+    final s = store?.aiTasks;
+    if (s == null) return;
+    try {
+      for (final MapEntry(:key, :value) in (jsonDecode(s) as Map<String, dynamic>).entries) {
+        _aiTasks[key] = {
+          for (final t in (value as List).whereType<Map<String, dynamic>>())
+            if (t['id'] is num) (t['id'] as num).toInt(): t,
+        };
+      }
+    } on Object catch (e) {
+      Log.info('ai', 'the task history is unreadable: $e');
+    }
+  }
+
+  /// Forgets a host's past tasks on this phone.
+  void clearAiHistory(String deviceId) {
+    _aiTasks.remove(deviceId);
+    _saveAiTasks();
+    notifyListeners();
   }
 
   // ---- Wake ----------------------------------------------------------------
@@ -276,6 +337,7 @@ class Sessions extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     _clipTimer?.cancel();
+    if (_aiSave != null) _saveAiTasks();
     engine.removeListener(_onStatus);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -562,17 +624,49 @@ class RemoteSession extends ChangeNotifier {
     final files = c['files'] is List ? (c['files'] as List).length : 0;
     if (text == null && png == null && files == 0) return;
     final at = (c['at'] as num?)?.toInt();
-    _owner._addClip(ClipEntry(
+    final entry = ClipEntry(
       deviceId: deviceId,
       fromHost: fromHost,
       at: at == null ? DateTime.now() : DateTime.fromMillisecondsSinceEpoch(at),
       text: text,
       png: png,
       files: files,
-    ));
+    );
+    final paths = [for (final p in (c['paths'] as List?) ?? const []) if (p is String) p];
+    if (fromHost && paths.isNotEmpty) {
+      unawaited(_keepFiles(entry, paths).then(_owner._addClip).catchError((Object e) {
+        Log.error('clipboard', e);
+        _owner._addClip(entry);
+      }));
+    } else {
+      _owner._addClip(entry);
+    }
     if (!fromHost || !shareClipboard) return;
     if (text != null) unawaited(_owner._fromHost(text));
     if (png != null) unawaited(_owner._imageFromHost(png).catchError((Object e) => Log.error('clipboard', e)));
+  }
+
+  /// Moves files the host copied out of the session's inbox (the core
+  /// removes it when the session ends) into the app's `received`, for the
+  /// history to save or share.
+  Future<ClipEntry> _keepFiles(ClipEntry e, List<String> paths) async {
+    final cache = _owner.engine.cacheDir;
+    if (cache.isEmpty) return e;
+    final dir = Directory('$cache/received/${DateTime.now().microsecondsSinceEpoch}');
+    await dir.create(recursive: true);
+    final kept = <String>[];
+    for (final p in paths) {
+      final to = '${dir.path}/${p.split('/').last}';
+      final moved = await FileSystemEntity.isDirectory(p) ? Directory(p).rename(to) : File(p).rename(to);
+      kept.add((await moved).path);
+    }
+    return ClipEntry(
+      deviceId: e.deviceId,
+      fromHost: e.fromHost,
+      at: e.at,
+      files: e.files,
+      kept: kept,
+    );
   }
 
   Future<void> _openVideo() async {

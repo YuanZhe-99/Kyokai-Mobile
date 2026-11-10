@@ -23,10 +23,12 @@ Tap a device for its page:
 - **Open desktop**: its screen. The first time, type its Kyokai password
   (Remember keeps it).
 - **AI task**: its AI, when you may run tasks there. The clock icon shows the
-  tasks it showed while you were connected.
+  tasks it showed while you were connected, kept across restarts until you
+  clear them.
 - **SSH, Remote Desktop, VNC**: the computer's own services through Kyokai.
   From SSH, **Files** browses it over SFTP: open folders, upload, download,
-  rename, delete.
+  rename, delete. Remote Desktop uses H.264 when the phone has a
+  decoder for it.
 - **NanoKVM**: when the computer has a NanoKVM USB, the computer wired to it.
 - **Wake the screen**: turns its display back on (also the sun icon on the
   device list, and the button the screen shows while asleep).
@@ -54,10 +56,13 @@ Tap a device for its page:
 ## Clipboard
 
 While a desktop shares the clipboard, text and images you copy on the phone
-go to the computer, and what you copy there comes to the phone. Files copied
-on a computer are listed but not received on Android. Sessions → the
-clipboard icon, or the desktop's menu, shows the history; tap an entry to
-copy it again.
+go to the computer, and what you copy there comes to the phone. Files and
+folders copied on the computer come to the phone too (up to 1 GiB); files on
+the phone do not go to the computer yet.
+
+Sessions → the clipboard icon, or the desktop's menu, shows the history. Tap
+text or an image to copy it again; tap files to save one or share them with
+another app. Received files are kept until the app closes.
 
 ## Sessions
 
