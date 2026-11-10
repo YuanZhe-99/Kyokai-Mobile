@@ -10,7 +10,7 @@
 - 协议参考：`doc/dev/api-control.md`、`api-media.md`、`api-services.md`
 - 使用说明：`doc/user-guide.md`、`doc/user-guide.zh.md`
 - 实机测试清单：`doc/test-checklist.md`
-- CI（`.github/workflows/ci.yml`）：检查、测试、从子模块构建 core、客户端库和 APK；`v*` 标签发布 Release。0.1.0、0.1.1、0.1.2 已发布；0.1.3 已提交，未打标签
+- CI（`.github/workflows/ci.yml`）：检查、测试、从子模块构建 core、客户端库和 APK；`v*` 标签发布 Release。0.1.0 到 0.1.3 已发布（最新：v0.1.3，2026-11-10）
 
 ## Kyokai 子模块
 
