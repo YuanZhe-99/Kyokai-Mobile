@@ -187,17 +187,28 @@ void keyboardOnEntryTests() {
     });
   }
 
-  testWidgets('the hinge sensor alone finds laptop posture', (t) async {
-    t.view.physicalSize = const Size(1000, 760);
-    t.view.devicePixelRatio = 1;
-    addTearDown(t.view.reset);
-    (Rect, PostureSource)? found;
-    for (final angle in [100.0, 175.0, null]) {
+  // A Galaxy Z Fold reports its fold as flat at any angle (seen on an
+  // SM-F971U1): the angle says half open, the fold's bounds say which way.
+  for (final (name, size, bounds, angle, laptop) in [
+    ('book: the fold down the window', const Size(933, 704), const Rect.fromLTWH(466, 0, 0, 704), 90.0, false),
+    ('laptop: the fold across it', const Size(704, 933), const Rect.fromLTWH(0, 466, 704, 0), 90.0, true),
+    ('laptop shape, opened flat', const Size(704, 933), const Rect.fromLTWH(0, 466, 704, 0), 178.0, false),
+    ('laptop shape, no angle', const Size(704, 933), const Rect.fromLTWH(0, 466, 704, 0), null, false),
+  ]) {
+    testWidgets('posture, $name', (t) async {
+      t.view.physicalSize = size;
+      t.view.devicePixelRatio = 1;
+      t.view.displayFeatures = [
+        DisplayFeature(bounds: bounds, type: DisplayFeatureType.fold, state: DisplayFeatureState.postureFlat),
+      ];
+      addTearDown(t.view.reset);
+      (Rect, PostureSource)? found;
       await t.pumpWidget(Builder(builder: (context) {
         found = laptopHinge(context, angle: angle);
         return const SizedBox();
       }));
-      expect(found?.$2, angle == 100 ? PostureSource.hingeSensor : null);
-    }
-  });
+      expect(found != null, laptop);
+      if (laptop) expect(found!.$1.top, 466);
+    });
+  }
 }
