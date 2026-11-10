@@ -26,6 +26,65 @@ Future<_Sent> _pump(WidgetTester t, {double width = 390, HostOs os = HostOs.wind
 
 void main() {
   heightTests();
+  testWidgets('Shift shows the symbols over the digits and punctuation', (t) async {
+    await _pump(t, width: 900);
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('/'), findsOneWidget);
+    await t.tap(find.byIcon(Icons.arrow_upward).first);
+    await t.pump();
+    expect(find.text('!'), findsOneWidget);
+    expect(find.text('?'), findsOneWidget);
+    expect(find.text('Q'), findsOneWidget);
+    expect(find.text('1'), findsNothing);
+  });
+
+  testWidgets('on a Mac, Option alone shows its layer', (t) async {
+    await _pump(t, width: 900, os: HostOs.macos);
+    await t.tap(find.text('⌥ Opt').first);
+    await t.pump();
+    expect(find.text('∑'), findsOneWidget); // Option+W
+    expect(find.text('™'), findsOneWidget); // Option+2
+    await t.tap(find.byIcon(Icons.arrow_upward).first);
+    await t.pump();
+    expect(find.text('„'), findsOneWidget); // Option+Shift+W
+    expect(find.text('€'), findsOneWidget); // Option+Shift+2
+  });
+
+  testWidgets('Option is no layer off a Mac, nor with Cmd', (t) async {
+    await _pump(t, width: 900, os: HostOs.macos);
+    await t.tap(find.text('⌥ Opt').first);
+    await t.tap(find.text('⌘ Cmd').first);
+    await t.pump();
+    expect(find.text('∑'), findsNothing);
+    expect(find.text('w'), findsOneWidget);
+  });
+  testWidgets('the header\'s chip picks the system layout, or back to automatic', (t) async {
+    final picks = <HostOs?>[];
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.bottomCenter,
+          child: RemoteKeyboard(
+            send: (_, _, {required caps}) {},
+            onHide: () {},
+            hostOs: HostOs.macos,
+            osPicked: true,
+            onOsChanged: picks.add,
+          ),
+        ),
+      ),
+    ));
+    expect(find.text('Kyokai · Map · macOS'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('keyboardOs')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Linux').last, warnIfMissed: false);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('keyboardOs')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Auto'), warnIfMissed: false);
+    await t.pumpAndSettle();
+    expect(picks, [HostOs.linux, null]);
+  });
   test('keysyms follow Shift', () {
     expect(keysymFor(usKeys['a']!.$1, shift: false), 0x61);
     expect(keysymFor(usKeys['a']!.$1, shift: true), 0x41);

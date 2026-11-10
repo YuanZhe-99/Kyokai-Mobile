@@ -202,7 +202,15 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
 
   // ---- Building --------------------------------------------------------------
 
-  HostOs get _os => s.peer.os.isEmpty && s.peer.name.isEmpty ? HostOs.windows : s.peer.hostOs;
+  /// Picked per device and per way in (Kyokai, NanoKVM; RDP and VNC in
+  /// their own page). A NanoKVM's machine is not the host: with nothing
+  /// picked it is Windows (the machine reports no system).
+  String get _osKey => '${s.deviceId}.${s.kind == SessionKind.nanokvm ? 'nanokvm' : 'kyokai'}';
+  HostOs? get _osPicked => HostOs.values.asNameMap()[AppScope.of(context).prefs.keyboardOs(_osKey)];
+  HostOs get _os =>
+      _osPicked ??
+      (s.kind == SessionKind.nanokvm || (s.peer.os.isEmpty && s.peer.name.isEmpty) ? HostOs.windows : s.peer.hostOs);
+  void _pickOs(HostOs? os) => setState(() => AppScope.of(context).prefs.setKeyboardOs(_osKey, os?.name));
 
   String _statsLine() {
     final l = context.l;
@@ -304,7 +312,9 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
           ),
         ]);
     }
-    if (s.connected && !s.granted.contains('view-screen')) {
+    // A NanoKVM's picture is its capture card, not the host's screen: the
+    // host's view-screen grant does not apply.
+    if (s.connected && s.kind == SessionKind.desktop && !s.granted.contains('view-screen')) {
       return card([Text(l.noViewPermission)]);
     }
     return null;
@@ -506,6 +516,9 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
         key: _keyboardKey,
         send: _sendScan,
         hostOs: _os,
+        osPicked: _osPicked != null,
+        onOsChanged: _pickOs,
+        autoLabel: context.l.auto,
         target: KeyTarget.kyokai,
         split: prefs.splitKeyboard,
         onSplitChanged: (v) => prefs.splitKeyboard = v,
@@ -633,6 +646,9 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
                       key: _keyboardKey,
                       send: _sendScan,
                       hostOs: _os,
+                      osPicked: _osPicked != null,
+                      onOsChanged: _pickOs,
+                      autoLabel: context.l.auto,
                       target: KeyTarget.kyokai,
                       split: false,
                       onSplitChanged: (_) {},

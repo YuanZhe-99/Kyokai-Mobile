@@ -43,6 +43,12 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
   ServiceSession get s => widget.session;
   bool get _vnc => s.kind == ServiceKind.vnc;
 
+  /// The keyboard's system layout, picked per device and per way in;
+  /// with nothing picked, macOS for VNC and Windows for Remote Desktop.
+  String get _osKey => '${s.deviceId}.${s.kind.name}';
+  HostOs _os(Prefs prefs) =>
+      HostOs.values.asNameMap()[prefs.keyboardOs(_osKey)] ?? (_vnc ? HostOs.macos : HostOs.windows);
+
   @override
   void initState() {
     super.initState();
@@ -254,7 +260,10 @@ class _DesktopPageState extends State<DesktopPage> with WidgetsBindingObserver i
               if (_keyboard && s.connected)
                 RemoteKeyboard(
                   send: _send,
-                  hostOs: _vnc ? HostOs.macos : HostOs.windows,
+                  hostOs: _os(prefs),
+                  osPicked: prefs.keyboardOs(_osKey) != null,
+                  onOsChanged: (os) => setState(() => prefs.setKeyboardOs(_osKey, os?.name)),
+                  autoLabel: l.auto,
                   target: _vnc ? KeyTarget.vnc : KeyTarget.rdp,
                   split: prefs.splitKeyboard,
                   onSplitChanged: (v) => prefs.splitKeyboard = v,

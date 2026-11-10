@@ -88,6 +88,32 @@ int keysymFor(int code, {required bool shift}) {
   return (shift ? chars.$2 : chars.$1).codeUnitAt(0);
 }
 
+/// The character a US key types, with Shift or without; null for a key
+/// that types none.
+String? usCharFor(int code, {required bool shift}) {
+  final chars = _usChars[code];
+  return chars == null ? null : (shift ? chars.$2 : chars.$1);
+}
+
+/// What a Mac's US layout types with Option, without and with Shift, by
+/// scan code. The accents (´ ¨ ˆ ˜ `) are dead keys there: the host waits
+/// for the letter they go on. Another layout on the host types its own.
+final Map<int, (String, String)> macOptionChars = () {
+  const rows = [
+    ('`1234567890-=', '`¡™£¢∞§¶•ªº–≠', '`⁄€‹›ﬁﬂ‡°·‚—±'),
+    ('qwertyuiop[]\\', 'œ∑´®†¥¨ˆøπ“‘«', 'Œ„´‰ˇÁ¨ˆØ∏”’»'),
+    ("asdfghjkl;'", 'åß∂ƒ©˙∆˚¬…æ', 'ÅÍÎÏ˝ÓÔÒÚÆ'),
+    ('zxcvbnm,./', 'Ω≈ç√∫˜µ≤≥÷', '¸˛Ç◊ı˜Â¯˘¿'),
+  ];
+  final m = <int, (String, String)>{};
+  for (final (keys, plain, shifted) in rows) {
+    for (var i = 0; i < keys.length; i++) {
+      m[usKeys[keys[i]]!.$1] = (plain[i], shifted[i]);
+    }
+  }
+  return m;
+}();
+
 /// The host's system: names and orders the modifier keys and picks the
 /// shortcuts on the Fn page. The keys themselves go by place either way.
 enum HostOs {

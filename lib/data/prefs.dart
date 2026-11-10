@@ -91,6 +91,12 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The keyboard's system layout picked by hand for a host ('windows',
+  /// 'macos', 'linux'); null to follow what the host reports. [key] names
+  /// the host and how it is reached (a NanoKVM's machine is not the host).
+  String? keyboardOs(String key) => _p.getString('keyboardOs.$key');
+  void setKeyboardOs(String key, String? os) => _set('keyboardOs.$key', os);
+
   bool get sound => _p.getBool('sound') ?? true;
   set sound(bool v) => _set('sound', v);
 

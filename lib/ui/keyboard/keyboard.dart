@@ -121,12 +121,23 @@ class RemoteKeyboard extends StatefulWidget {
     this.onSplitChanged,
     this.touchpad,
     this.onSpecial,
+    this.onOsChanged,
+    this.osPicked = false,
+    this.autoLabel = 'Auto',
   });
 
   final ScanSink send;
   final VoidCallback onHide;
   final HostOs hostOs;
   final KeyTarget target;
+
+  /// Picks the system layout by hand (null: back to what the host reports);
+  /// the header's chip offers it when set.
+  final ValueChanged<HostOs?>? onOsChanged;
+
+  /// [hostOs] was picked by hand rather than reported.
+  final bool osPicked;
+  final String autoLabel;
 
   /// On a wide screen: the split keyboard rather than the full one.
   final bool split;
@@ -330,6 +341,26 @@ class RemoteKeyboardState extends State<RemoteKeyboard> {
   // ---- Layout -----------------------------------------------------------
 
   bool get _mac => widget.hostOs == HostOs.macos;
+
+  /// What a key shows with the modifiers on now, as the host's US layout
+  /// types it: Shift's symbols over the digits and punctuation (letters
+  /// follow CapsLock too), and on a Mac the Option layer while Option is on
+  /// alone (with Ctrl or Cmd it is a shortcut, the plain key shows).
+  String _shown(_K k) {
+    final a = k.action;
+    if (a is! _Char || a.char == ' ') return k.label;
+    final r = usKeys[a.char.toLowerCase()] ?? usKeys[a.char];
+    if (r == null) return k.label;
+    final (code, needsShift) = r;
+    final shift = _active(Mod.shift);
+    if (_mac && _active(Mod.alt) && !_active(Mod.ctrl) && !_active(Mod.win)) {
+      final o = macOptionChars[code];
+      if (o != null) return needsShift || shift ? o.$2 : o.$1;
+    }
+    final letter = a.char.toLowerCase() != a.char.toUpperCase();
+    if (letter) return _caps != shift ? k.label.toUpperCase() : k.label.toLowerCase();
+    return (needsShift || shift ? usCharFor(code, shift: true) : null) ?? k.label;
+  }
 
   String _modLabel(Mod m) => switch ((m, widget.hostOs)) {
     (Mod.shift, _) => 'Shift',
@@ -542,7 +573,7 @@ class RemoteKeyboardState extends State<RemoteKeyboard> {
                     k: k,
                     palette: p,
                     strip: strip,
-                    upper: _caps != _active(Mod.shift),
+                    label: _shown(k),
                     lit: switch (k.action) {
                       _ModKey(:final mod) => _held.contains(mod) || _latch[mod] != _Latch.off,
                       _Go(page: KeyPage.letters) when strip => _page == KeyPage.function,
@@ -562,14 +593,44 @@ class RemoteKeyboardState extends State<RemoteKeyboard> {
   );
 
   Widget _header(_Palette p, bool wide) {
-    final chip = Container(
+    final pick = widget.onOsChanged;
+    Widget chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(color: p.chip, borderRadius: BorderRadius.circular(8)),
-      child: Text(
-        '${widget.target.label} · ${widget.hostOs.label}',
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.onChip),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${widget.target.label} · ${widget.hostOs.label}',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.onChip),
+          ),
+          if (pick != null) Icon(Icons.arrow_drop_down, size: 18, color: p.onChip),
+        ],
       ),
     );
+    if (pick != null) {
+      // The host's reported system can be wrong, and a NanoKVM's machine
+      // reports none: the layout can be picked here.
+      // String values: a null value would count as cancelling the menu.
+      chip = PopupMenuButton<String>(
+        key: const ValueKey('keyboardOs'),
+        tooltip: widget.hostOs.label,
+        onSelected: (v) {
+          releaseAll();
+          pick(HostOs.values.asNameMap()[v]);
+        },
+        itemBuilder: (_) => [
+          CheckedPopupMenuItem(value: 'auto', checked: !widget.osPicked, child: Text(widget.autoLabel)),
+          for (final os in HostOs.values)
+            CheckedPopupMenuItem(
+              value: os.name,
+              checked: widget.osPicked && widget.hostOs == os,
+              child: Text(os.label),
+            ),
+        ],
+        child: chip,
+      );
+    }
     return SizedBox(
       height: 36,
       child: Row(
@@ -796,7 +857,7 @@ class _KeyCap extends StatefulWidget {
     required this.k,
     required this.palette,
     required this.strip,
-    required this.upper,
+    required this.label,
     required this.lit,
     required this.locked,
     required this.onDown,
@@ -805,7 +866,9 @@ class _KeyCap extends StatefulWidget {
 
   final _K k;
   final _Palette palette;
-  final bool strip, upper, lit, locked;
+  /// What the key shows now (with Shift, with Option on a Mac).
+  final String label;
+  final bool strip, lit, locked;
   final VoidCallback onDown, onUp;
 
   @override
@@ -839,7 +902,7 @@ class _KeyCapState extends State<_KeyCap> {
     final at = box.localToGlobal(Offset.zero);
     final size = box.size;
     final p = widget.palette;
-    final label = widget.upper ? widget.k.label.toUpperCase() : widget.k.label;
+    final label = widget.label;
     _preview = OverlayEntry(
       builder: (_) => Positioned(
         left: at.dx - 4,
@@ -882,7 +945,7 @@ class _KeyCapState extends State<_KeyCap> {
       bg = widget.strip ? p.strip : (k.special ? p.special : p.key);
       fg = p.text;
     }
-    final label = k.action is _Char && widget.upper ? k.label.toUpperCase() : k.label;
+    final label = widget.label;
     final Widget face = k.icon != null
         ? Icon(k.icon, size: widget.strip ? 18 : 20, color: fg)
         : Text(

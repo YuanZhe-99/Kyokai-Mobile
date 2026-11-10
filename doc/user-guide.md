@@ -40,7 +40,10 @@ Tap a device for its page:
   size.
 - **Keyboard**: the keyboard button opens the full keyboard (Ctrl, Alt,
   Win/Cmd, function keys, arrows) with a touchpad; a hardware keyboard and
-  mouse work as they are.
+  mouse work as they are. Shift shows each key's symbol; on a Mac, Option
+  shows its own layer. Tap the label at the keyboard's top left to pick
+  Windows, macOS or Linux by hand (kept for each device and each of Kyokai,
+  NanoKVM, Remote Desktop and VNC).
 - **The menu** (⋮): quality, sound, sharing the clipboard, typing text,
   clipboard history, switching to another open desktop, session actions,
   disconnect.
