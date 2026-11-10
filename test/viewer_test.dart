@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   packetTests();
+  cursorEchoTests();
   laptopTests();
   laptopSafeAreaTests();
   keyboardOnEntryTests();
@@ -115,6 +116,54 @@ void packetTests() {
     // The default: the decoder's own SurfaceView, embedded.
     expect(find.byType(PlatformViewLink), findsOneWidget);
     expect(t.getSize(find.byType(PlatformViewLink)).width, greaterThan(100));
+    await t.pumpWidget(const SizedBox());
+    state.sessions.dispose();
+  });
+}
+
+void cursorEchoTests() {
+  testWidgets("the host's late cursor reports do not pull the trackpad cursor back", (t) async {
+    SharedPreferences.setMockInitialValues({});
+    final state = AppState(prefs: await Prefs.load(), engine: Engine());
+    final s = RemoteSession.forTest(state.sessions, '123456789')
+      ..state = 'connected'
+      ..granted = const ['view-screen', 'control-input']
+      ..pictureSize = const Size(2560, 1600)
+      ..texture = VideoTexture(7, 'c2.test.hevc.decoder', true);
+    t.view.physicalSize = const Size(1000, 760);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(AppScope(
+      state: state,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ViewerPage(session: s),
+      ),
+    ));
+    await t.pump();
+    final ring = find.byWidgetPredicate(
+      (w) => w is Container && w.decoration is BoxDecoration && (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+    );
+    final start = t.getCenter(ring);
+    final g = await t.startGesture(t.getCenter(find.byType(RemoteSurface)));
+    for (var i = 0; i < 10; i++) {
+      await g.moveBy(const Offset(8, 0));
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    final moved = t.getCenter(ring);
+    expect(moved.dx, greaterThan(start.dx + 30));
+    // The host reports where its pointer was before the finger moved it.
+    s.packetForTest(_packet(7, {'x': 0.5, 'y': 0.5, 'visible': true}));
+    await t.pump();
+    expect((t.getCenter(ring) - moved).distance, lessThan(0.01));
+    await g.up();
+    await t.pump(const Duration(milliseconds: 400));
+    // Quiet here a while: the host's own moves are followed again.
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 900)));
+    s.packetForTest(_packet(7, {'x': 0.5, 'y': 0.5, 'visible': true}));
+    await t.pump();
+    expect((t.getCenter(ring) - start).distance, lessThan(0.01));
     await t.pumpWidget(const SizedBox());
     state.sessions.dispose();
   });

@@ -89,6 +89,7 @@ class Touchpad {
       _released = false;
       _held = Offset.zero;
       _samples.clear();
+      _vAt = null;
       _gestureMoved = false;
       // Touching again while a tap's button is still down, or within a
       // drag's grace: the button stays down and this touch drags.
@@ -210,7 +211,23 @@ class Touchpad {
     }
     if (d == Offset.zero) return;
     _gestureMoved = true;
-    sink.move(d * (speed * gain(_velocity(time))));
+    sink.move(d * (speed * gain(_smoothVelocity(time))));
+  }
+
+  // The speed the gain follows, smoothed over about 40 ms: raw per-event
+  // speeds are noisy (touch and display rates differ), and a gain that
+  // flickers with them makes a slow, steady finger shake the pointer.
+  double _v = 0;
+  Duration? _vAt;
+
+  double _smoothVelocity(Duration now) {
+    final v = _velocity(now);
+    final last = _vAt;
+    _vAt = now;
+    if (last == null || now - last > const Duration(milliseconds: 100)) return _v = v;
+    final dt = (now - last).inMicroseconds / 1000;
+    final a = 1 - math.exp(-dt / 40);
+    return _v += (v - _v) * a;
   }
 
   /// Logical pixels per millisecond over the last few events.

@@ -79,8 +79,10 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
     final size = s.pictureSize;
     if (!size.isEmpty) _viewport.layout(_viewport.view, size);
     // The host's own pointer moves (it or its user moved it): follow it.
+    // Not while this phone moves it: the host reports where the pointer
+    // was a round trip ago, and taking that back makes the cursor shake.
     final c = s.cursor;
-    if (c != null && s.cursorVisible && !_fingerDown) _viewport.cursor = c;
+    if (c != null && s.cursorVisible && !_fingerDown && !_movingHere) _viewport.cursor = c;
     if (!_promptedPassword && (s.state == 'failed' && s.failure == 'password')) {
       _promptedPassword = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _askPassword());
@@ -89,6 +91,14 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   }
 
   bool _fingerDown = false;
+
+  /// Since this phone last moved, clicked or scrolled the host's pointer.
+  final _sinceLocal = Stopwatch();
+  static const _echoQuiet = Duration(milliseconds: 800);
+  bool get _movingHere => _sinceLocal.isRunning && _sinceLocal.elapsed < _echoQuiet;
+  void _touched() => _sinceLocal
+    ..reset()
+    ..start();
 
   /// Whether the keyboard was considered on entry (once a page).
   bool _keyboardDecided = false;
@@ -128,6 +138,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
 
   @override
   void move(double x, double y) {
+    _touched();
     _pendingMove = Offset(x, y);
     _moveTimer ??= Timer(const Duration(milliseconds: 8), _flushMove);
   }
@@ -143,6 +154,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
   void button(int button, bool down, double x, double y) {
     _flushMove();
     _fingerDown = down;
+    _touched();
     s.pointer(down ? 'down' : 'up', x, y, button: button);
   }
 
