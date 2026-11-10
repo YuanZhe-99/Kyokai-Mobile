@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/prefs.dart';
+import 'touchpad.dart';
 
 /// Where the surface's pointer input goes.
 abstract interface class PointerSink {
@@ -169,12 +170,9 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   bool _pinching = false;
   double? _pinchSpan;
   Offset? _pinchFocal;
-  Offset _scrollRest = Offset.zero;
 
-  /// Trackpad: the last tap's end, for tap-and-drag.
-  Duration? _lastTapEnd;
-  Offset? _lastTapAt;
-  bool _dragging = false;
+  /// Trackpad mode: a laptop touchpad's rules (touchpad.dart).
+  late final _pad = Touchpad(_PadToCursor(this), pinch: true);
 
   /// Touch: a long press turned into a right click; a drag holds the button.
   Timer? _longPress;
@@ -202,13 +200,18 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   }
 
   void _down(PointerDownEvent e) {
+    if (trackpad) {
+      _pad.speed = widget.speed / 1.6;
+      _pad.down(e.pointer, e.localPosition, e.timeStamp);
+      return;
+    }
     _fingers[e.pointer] = _Finger(e.localPosition, e.timeStamp);
     _most = math.max(_most, _fingers.length);
     if (_fingers.length == 2) {
       _longPress?.cancel();
       _pinchSpan = _span;
       _pinchFocal = _centroid;
-      if (!trackpad && _touchDown) {
+      if (_touchDown) {
         // The second finger arrived before the first moved: no click.
         _touchDown = false;
       }
@@ -217,36 +220,26 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     if (_fingers.length > 1) return;
     _scrolling = false;
     _pinching = false;
-    _scrollRest = Offset.zero;
-    if (trackpad) {
-      final last = _lastTapEnd;
-      final quick = last != null && e.timeStamp - last < const Duration(milliseconds: 280);
-      final near = _lastTapAt != null && (e.localPosition - _lastTapAt!).distance < 40;
-      if (quick && near) {
-        // Tap, then touch again: a drag with the button held.
-        _dragging = true;
-        final c = vp.cursor;
-        sink.button(0, true, c.dx, c.dy);
-      }
-    } else {
-      _longPressed = false;
-      _longPress = Timer(const Duration(milliseconds: 500), () {
-        final f = _fingers[e.pointer];
-        if (f == null || f.moved || _fingers.length != 1) return;
-        _longPressed = true;
-        HapticFeedback.mediumImpact();
-        final p = vp.toPicture(f.last);
-        sink.move(p.dx, p.dy);
-        sink.button(1, true, p.dx, p.dy);
-        sink.button(1, false, p.dx, p.dy);
-      });
-    }
+    _longPressed = false;
+    _longPress = Timer(const Duration(milliseconds: 500), () {
+      final f = _fingers[e.pointer];
+      if (f == null || f.moved || _fingers.length != 1) return;
+      _longPressed = true;
+      HapticFeedback.mediumImpact();
+      final p = vp.toPicture(f.last);
+      sink.move(p.dx, p.dy);
+      sink.button(1, true, p.dx, p.dy);
+      sink.button(1, false, p.dx, p.dy);
+    });
   }
 
   void _move(PointerMoveEvent e) {
+    if (trackpad) {
+      _pad.move(e.pointer, e.localPosition, e.timeStamp);
+      return;
+    }
     final f = _fingers[e.pointer];
     if (f == null) return;
-    final prev = f.last;
     f.last = e.localPosition;
     if (!f.moved && (f.last - f.start).distance > _slop) f.moved = true;
 
@@ -266,48 +259,48 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
         vp.zoom(span / s0, focal);
         vp.pan(focal - f0);
       } else if (_scrolling) {
-        // About one line per 24 logical pixels; natural scrolling.
-        _scrollRest += (focal - f0) / 24;
-        final lines = Offset(_scrollRest.dx.truncateToDouble(), _scrollRest.dy.truncateToDouble());
-        if (lines != Offset.zero) {
-          sink.scroll(-lines.dx, lines.dy);
-          _scrollRest -= lines;
-        }
+        // Smooth, in fractions of a notch; natural scrolling.
+        final n = (focal - f0) / Touchpad.pxPerNotch;
+        if (n != Offset.zero) sink.scroll(-n.dx, n.dy);
       }
       _pinchSpan = span;
       _pinchFocal = focal;
       return;
     }
     if (_most > 1) return;
-
-    if (trackpad) {
-      if (!f.moved) return;
-      final d = f.last - prev;
-      final shown = vp.shown;
-      if (shown.isEmpty) return;
-      // Faster swipes go further, as a touchpad's acceleration.
-      final v = d.distance;
-      final gain = widget.speed * (1 + math.min(v / 30, 1.5));
-      final next = vp.cursor + Offset(d.dx * gain / shown.width * vp.scale, d.dy * gain / shown.height * vp.scale);
-      vp.cursor = Offset(next.dx.clamp(0.0, 1.0), next.dy.clamp(0.0, 1.0));
-      sink.move(vp.cursor.dx, vp.cursor.dy);
-      vp.follow(vp.cursor);
-      setState(() {});
-    } else {
-      if (!f.moved || _longPressed) return;
-      _longPress?.cancel();
-      final p = vp.toPicture(f.last);
-      if (!_touchDown) {
-        final s = vp.toPicture(f.start);
-        sink.move(s.dx, s.dy);
-        sink.button(0, true, s.dx, s.dy);
-        _touchDown = true;
-      }
-      sink.move(p.dx, p.dy);
+    if (!f.moved || _longPressed) return;
+    _longPress?.cancel();
+    final p = vp.toPicture(f.last);
+    if (!_touchDown) {
+      final s = vp.toPicture(f.start);
+      sink.move(s.dx, s.dy);
+      sink.button(0, true, s.dx, s.dy);
+      _touchDown = true;
     }
+    sink.move(p.dx, p.dy);
+  }
+
+  /// The trackpad moved the pointer by [d] logical pixels: the cursor moves
+  /// as far on screen, so zooming in makes it finer.
+  void _padMoved(Offset d) {
+    final shown = vp.shown;
+    if (shown.isEmpty) return;
+    final next = vp.cursor + Offset(d.dx / shown.width, d.dy / shown.height);
+    vp.cursor = Offset(next.dx.clamp(0.0, 1.0), next.dy.clamp(0.0, 1.0));
+    sink.move(vp.cursor.dx, vp.cursor.dy);
+    vp.follow(vp.cursor);
+    setState(() {});
   }
 
   void _up(PointerEvent e) {
+    if (trackpad) {
+      if (e is PointerCancelEvent) {
+        _pad.cancel(e.pointer);
+      } else {
+        _pad.up(e.pointer, e.timeStamp);
+      }
+      return;
+    }
     final f = _fingers.remove(e.pointer);
     if (f == null) return;
     if (_fingers.isNotEmpty) return;
@@ -318,42 +311,19 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
     _pinchSpan = null;
     _pinchFocal = null;
 
-    if (trackpad) {
-      final c = vp.cursor;
-      if (_dragging) {
-        _dragging = false;
-        sink.button(0, false, c.dx, c.dy);
-        _lastTapEnd = null;
-        return;
-      }
-      if (tap && most == 1) {
-        sink.button(0, true, c.dx, c.dy);
-        sink.button(0, false, c.dx, c.dy);
-        _lastTapEnd = e.timeStamp;
-        _lastTapAt = f.last;
-      } else if (tap && most == 2) {
-        sink.button(1, true, c.dx, c.dy);
-        sink.button(1, false, c.dx, c.dy);
-      } else if (tap && most == 3) {
-        sink.button(2, true, c.dx, c.dy);
-        sink.button(2, false, c.dx, c.dy);
-      }
-    } else {
-      final p = vp.toPicture(f.last);
-      if (_touchDown) {
-        _touchDown = false;
-        sink.move(p.dx, p.dy);
-        sink.button(0, false, p.dx, p.dy);
-      } else if (tap && most == 1 && !_longPressed) {
-        sink.move(p.dx, p.dy);
-        sink.button(0, true, p.dx, p.dy);
-        sink.button(0, false, p.dx, p.dy);
-        vp.cursor = p;
-      } else if (tap && most == 2) {
-        final c = vp.toPicture(f.last);
-        sink.button(1, true, c.dx, c.dy);
-        sink.button(1, false, c.dx, c.dy);
-      }
+    final p = vp.toPicture(f.last);
+    if (_touchDown) {
+      _touchDown = false;
+      sink.move(p.dx, p.dy);
+      sink.button(0, false, p.dx, p.dy);
+    } else if (tap && most == 1 && !_longPressed) {
+      sink.move(p.dx, p.dy);
+      sink.button(0, true, p.dx, p.dy);
+      sink.button(0, false, p.dx, p.dy);
+      vp.cursor = p;
+    } else if (tap && most == 2) {
+      sink.button(1, true, p.dx, p.dy);
+      sink.button(1, false, p.dx, p.dy);
     }
   }
 
@@ -380,6 +350,7 @@ class _RemoteSurfaceState extends State<RemoteSurface> {
   @override
   void dispose() {
     _longPress?.cancel();
+    _pad.reset();
     super.dispose();
   }
 
@@ -478,4 +449,30 @@ class Minimap extends StatelessWidget {
       );
     },
   );
+}
+
+/// The trackpad's output: the cursor, the host's buttons at it, scrolling,
+/// and the picture's zoom.
+class _PadToCursor implements TouchpadSink {
+  _PadToCursor(this.s);
+  final _RemoteSurfaceState s;
+
+  @override
+  void move(Offset delta) => s._padMoved(delta);
+
+  @override
+  void button(int button, bool down) {
+    if (down) HapticFeedback.selectionClick();
+    final c = s.vp.cursor;
+    s.sink.button(button, down, c.dx, c.dy);
+  }
+
+  @override
+  void scroll(Offset notches) => s.sink.scroll(notches.dx, notches.dy);
+
+  @override
+  void pinch(double scale, Offset focal, Offset pan) {
+    s.vp.zoom(scale, focal);
+    s.vp.pan(pan);
+  }
 }

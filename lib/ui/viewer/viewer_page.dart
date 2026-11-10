@@ -115,19 +115,22 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
 
   // ---- Touchpad of the split keyboard --------------------------------------
 
-  Touchpad get _pad => _TouchpadBridge(this);
+  KeyboardPad get _pad => _TouchpadBridge(this);
 
   void _padMove(Offset d) {
     final prefs = AppScope.of(context).prefs;
     final shown = _viewport.shown;
     if (shown.isEmpty) return;
-    final c = _viewport.cursor + Offset(d.dx * prefs.pointerSpeed / shown.width, d.dy * prefs.pointerSpeed / shown.height);
+    // The pad is small: it reaches 1.5 times as far as the screen's own
+    // trackpad, at the user's pointer speed (1.6 being the default).
+    final k = 1.5 * prefs.pointerSpeed / 1.6;
+    final c = _viewport.cursor + Offset(d.dx * k / shown.width, d.dy * k / shown.height);
     _viewport.cursor = Offset(c.dx.clamp(0.0, 1.0), c.dy.clamp(0.0, 1.0));
     move(_viewport.cursor.dx, _viewport.cursor.dy);
     setState(() {});
   }
 
-  void scrollPad(Offset d) => scroll(-d.dx / 24, d.dy / 24);
+  void scrollPad(Offset notches) => scroll(notches.dx, notches.dy);
 
   // ---- Keys ------------------------------------------------------------------
 
@@ -523,7 +526,7 @@ class _ViewerPageState extends State<ViewerPage> implements PointerSink {
 }
 
 /// The split keyboard's touchpad drives the trackpad cursor.
-class _TouchpadBridge implements Touchpad {
+class _TouchpadBridge implements KeyboardPad {
   _TouchpadBridge(this.v);
   final _ViewerPageState v;
 

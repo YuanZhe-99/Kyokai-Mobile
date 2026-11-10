@@ -13,6 +13,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../viewer/touchpad.dart';
 import 'keys.dart';
 
 /// Where the keyboard's keys go: one scan-code press or release, with this
@@ -33,14 +34,14 @@ enum Mod {
 }
 
 /// The touchpad between the halves of the split keyboard.
-abstract interface class Touchpad {
+abstract interface class KeyboardPad {
   /// The pointer moved by this many logical pixels.
   void move(Offset delta);
 
   /// A button went down or up (0 left, 1 right).
   void button(int button, bool down);
 
-  /// Two fingers scrolled by this many logical pixels.
+  /// Two fingers scrolled by this many wheel notches (content follows).
   void scroll(Offset delta);
 }
 
@@ -132,7 +133,7 @@ class RemoteKeyboard extends StatefulWidget {
   final ValueChanged<bool>? onSplitChanged;
 
   /// Drives the pointer from the split keyboard's middle.
-  final Touchpad? touchpad;
+  final KeyboardPad? touchpad;
 
   /// A shortcut the session performs itself (`ctrl_alt_del`); keys are sent
   /// when it is null or answers false.
@@ -668,7 +669,7 @@ class RemoteKeyboardState extends State<RemoteKeyboard> {
 /// fingers scroll; Left and Right buttons below.
 class _TouchpadArea extends StatefulWidget {
   const _TouchpadArea({required this.pad, required this.palette, required this.height});
-  final Touchpad? pad;
+  final KeyboardPad? pad;
   final _Palette palette;
   final double height;
 
@@ -676,9 +677,30 @@ class _TouchpadArea extends StatefulWidget {
   State<_TouchpadArea> createState() => _TouchpadAreaState();
 }
 
-class _TouchpadAreaState extends State<_TouchpadArea> {
-  int _fingers = 0;
-  Offset? _last;
+class _TouchpadAreaState extends State<_TouchpadArea> implements TouchpadSink {
+  // A laptop touchpad's rules: taps, tap-and-drag, smooth scrolling.
+  late final _engine = Touchpad(this);
+
+  @override
+  void move(Offset delta) => widget.pad?.move(delta);
+
+  @override
+  void button(int button, bool down) {
+    if (down) HapticFeedback.selectionClick();
+    widget.pad?.button(button, down);
+  }
+
+  @override
+  void scroll(Offset notches) => widget.pad?.scroll(notches);
+
+  @override
+  void pinch(double scale, Offset focal, Offset pan) {}
+
+  @override
+  void dispose() {
+    _engine.reset();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -708,33 +730,15 @@ class _TouchpadAreaState extends State<_TouchpadArea> {
           children: [
             Expanded(
               child: Listener(
-                onPointerDown: (e) {
-                  _fingers++;
-                  _last = e.position;
-                },
-                onPointerUp: (_) => _fingers = (_fingers - 1).clamp(0, 10),
-                onPointerCancel: (_) => _fingers = (_fingers - 1).clamp(0, 10),
-                onPointerMove: (e) {
-                  final last = _last;
-                  _last = e.position;
-                  if (last == null) return;
-                  final d = e.position - last;
-                  if (_fingers >= 2) {
-                    pad?.scroll(d / _fingers.toDouble());
-                  } else {
-                    pad?.move(d);
-                  }
-                },
-                child: GestureDetector(
-                  onTap: () {
-                    pad?.button(0, true);
-                    pad?.button(0, false);
-                  },
-                  child: CustomPaint(
-                    painter: _DashedBox(p.outline),
-                    child: Center(
-                      child: Text('Touchpad', style: TextStyle(color: p.text.withValues(alpha: 0.6), fontSize: 13)),
-                    ),
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (e) => _engine.down(e.pointer, e.localPosition, e.timeStamp),
+                onPointerMove: (e) => _engine.move(e.pointer, e.localPosition, e.timeStamp),
+                onPointerUp: (e) => _engine.up(e.pointer, e.timeStamp),
+                onPointerCancel: (e) => _engine.cancel(e.pointer),
+                child: CustomPaint(
+                  painter: _DashedBox(p.outline),
+                  child: Center(
+                    child: Text('Touchpad', style: TextStyle(color: p.text.withValues(alpha: 0.6), fontSize: 13)),
                   ),
                 ),
               ),
